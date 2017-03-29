@@ -36,13 +36,17 @@ app.use(function (req, res, next) {
   };
 
   req.apiUrl = function(endPoint, query) {
-    return url.format({
-      protocol: req.protocol,
+    var isHeroku = process.env.HEROKU === 'true';
+    var urlOptions = {
+      protocol: isHeroku ? 'https' : req.protocol,
       hostname: req.hostname,
-      port: port,
       pathname: endPoint,
       query: query
-    });
+    };
+    if (!isHeroku) {
+      urlOptions.port = port;
+    }
+    return url.format(urlOptions);
   };
 
   req.db = function (cb) {
