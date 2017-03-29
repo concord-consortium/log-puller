@@ -1,0 +1,22 @@
+{
+  "name": "log-manager-puller",
+  "version": "1.0.0",
+  "description": "Pulls data from the log manager",
+  "main": "index.js",
+  "scripts": {
+    "start": "nf start"
+  },
+  "engines": {
+    "node": "6.9.4"
+  },
+  "author": "Doug Martin",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.15.2",
+    "foreman": "^2.0.0",
+    "jsonwebtoken": "^7.3.0",
+    "pg": "^6.1.5",
+    "superagent": "^3.5.1",
+    "urlsafe-base64": "^1.0.0"
+  }
+}
