@@ -18,7 +18,7 @@ looks like the following:
   "exp": 1490876553,
   "uid": 1777,
   "claims": {
-    "offering_info_url": "http://railsdev:9000/api/v1/offerings/4164"
+    "offering_info_url": "https://learn.concord.org/api/v1/offerings/4164"
   }
 }
 ```
@@ -46,21 +46,21 @@ The result of the get to offering_info_url looks like this:
       "username": "jmaster",
       "user_id": 41668,
       "started_activity": true,
-      "endpoint_url": "http://railsdev:9000/dataservice/external_activity_data/8610f5fa-51b7-40de-a35c-aef6ff94347c"
+      "endpoint_url": "https://learn.concord.org/dataservice/external_activity_data/8610f5fa-51b7-40de-a35c-aef6ff94347c"
     },
     {
       "name": "John master2",
       "username": "jmaster2",
       "user_id": 41727,
       "started_activity": true,
-      "endpoint_url": "http://railsdev:9000/dataservice/external_activity_data/89901b1e-5b7b-4d9c-bc73-5372e767a9c4"
+      "endpoint_url": "https://learn.concord.org/dataservice/external_activity_data/89901b1e-5b7b-4d9c-bc73-5372e767a9c4"
     },
     {
       "name": "John Master3",
       "username": "jmaster3",
       "user_id": 41728,
       "started_activity": true,
-      "endpoint_url": "http://railsdev:9000/dataservice/external_activity_data/671dc86e-b86d-4a32-92d8-3e27a56651f7"
+      "endpoint_url": "https://learn.concord.org/dataservice/external_activity_data/671dc86e-b86d-4a32-92d8-3e27a56651f7"
     }
   ]
 }
