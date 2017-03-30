@@ -61,25 +61,35 @@ app.use(function (req, res, next) {
   };
 
   req.getOfferingInfo = function (token, cb) {
-    var decoded = jwt.decode(token);
-    if (!decoded || !decoded.claims || !decoded.claims.offering_info_url) {
-      return res.error('Invalid portal token.  Decoded token is ' + JSON.stringify(decoded));
+
+    if (!process.env.JWT_HMAC_SECRET) {
+      return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate portal token');
     }
 
-    superagent
-      .get(decoded.claims.offering_info_url)
-      .set('Content-Type', 'application/json')
-      .set('Authorization', 'Bearer/JWT ' + token)
-      .end(function (err, portalRes) {
-        if (err) {
-          return res.error('Invalid portal token: portal returned "' + err + '"');
-        }
-        cb(portalRes.body);
-      });
+    jwt.verify(token, process.env.JWT_HMAC_SECRET, function (err, decoded) {
+      if (err) {
+        return res.error('Invalid portal token: ' + err);
+      }
+
+      if (!decoded || !decoded.claims || !decoded.claims.offering_info_url) {
+        return res.error('Invalid portal token format (missing claims.offering_info_url).  Decoded token is ' + JSON.stringify(decoded));
+      }
+
+      superagent
+        .get(decoded.claims.offering_info_url)
+        .set('Content-Type', 'application/json')
+        .set('Authorization', 'Bearer/JWT ' + token)
+        .end(function (err, portalRes) {
+          if (err) {
+            return res.error('Invalid portal token: portal returned "' + err + '"');
+          }
+          cb(portalRes.body);
+        });
+    });
   };
 
   if (!process.env.DATABASE_URL) {
-    next('Missing DATABASE_URL in environment variables');
+    next('Missing DATABASE_URL environment variable');
   }
   else {
     next();
