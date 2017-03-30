@@ -60,16 +60,16 @@ app.use(function (req, res, next) {
     });
   };
 
-  req.getClassInfo = function (token, cb) {
+  req.getOfferingInfo = function (token, cb) {
     var decoded = jwt.decode(token);
-    if (!decoded || !decoded.claims || !decoded.claims.class_info_url) {
+    if (!decoded || !decoded.claims || !decoded.claims.offering_info_url) {
       return res.error('Invalid portal token.  Decoded token is ' + JSON.stringify(decoded));
     }
 
     superagent
-      .get(decoded.claims.class_info_url)
+      .get(decoded.claims.offering_info_url)
       .set('Content-Type', 'application/json')
-      .set('Authorization', 'Bearer ' + token)
+      .set('Authorization', 'Bearer/JWT ' + token)
       .end(function (err, portalRes) {
         if (err) {
           return res.error('Invalid portal token: portal returned "' + err + '"');
@@ -128,42 +128,47 @@ var parseRubyHash = function (rubyHashString) {
 };
 
 var query = function (req, res, download) {
-  var laraId = parseInt(req.query.lara_id, 10);
-  if (!laraId) {
-    return res.error('Missing lara_id query parameter');
-  }
   var portalToken = req.query.portal_token;
   if (!portalToken) {
     return res.error('Missing portal_token query parameter');
   }
-  var classId = parseInt(req.query.class_id || "0", 10); // not required
 
-  req.getClassInfo(portalToken, function (classInfo) {
+  req.getOfferingInfo(portalToken, function (offering) {
 
-    var activity = ((classInfo && classInfo.lara_activities) || []).find(function (activity) {
-      return activity.lara_id == laraId;
-    });
-    if (!activity) {
-      return res.error('Unknown lara activity: ' + laraId);
+    if (!offering.activity_url) {
+      return res.error('The offering does not have an activity url', 500);
     }
-    if (activity.remote_endpoint_urls.length === 0) {
+    var matches = offering.activity_url.match(/\/activities\/(\d+)$/);
+    if (!matches) {
+      return res.error('The activity url of the offering is not a LARA activity: ' + offering.activity_url, 500);
+    }
+    var activityId = parseInt(matches[1], 10);
+
+    if (!offering.students) {
+      return res.error('The offering does not have any students', 500);
+    }
+
+    var endPoints = offering.students
+      .filter(function (student) { return (student.endpoint_url !== null) && (student.endpoint_url.length > 0); })
+      .map(function (student) { return student.endpoint_url; });
+    if (endPoints.length === 0) {
       return res.error('No student data was found for the activity');
     }
 
     res.contentType('application/json');
     if (download) {
-      res.setHeader('Content-disposition', 'attachment; filename="activity-' + laraId + (classId ? '-class-' + classId : '') + '.json"');
+      res.setHeader('Content-disposition', 'attachment; filename="activity-' + activityId + '-class-' + offering.clazz_id + '.json"');
     }
 
     req.db(function (client, done) {
       var rows = [];
       var columns = ["id", "session", "username", "application", "activity", "event", "time", "parameters", "extras", "event_value"];
       var exclude = (req.query.exclude || "").split(",");
-      var paramValues = ['activity: ' + activity.lara_id].concat(activity.remote_endpoint_urls);
-      var endpointMarkers = activity.remote_endpoint_urls.map(function (endPoint, i) { return '$' + (i+2); }); // +2 because activity name is $1
+      var paramValues = ['activity: ' + activityId].concat(endPoints);
+      var endpointMarkers = endPoints.map(function (endPoint, i) { return '$' + (i+2); }); // +2 because activity name is $1
       var startedResponse = false;
 
-      // for DEMO replace local generated links with production - REMOVE THIS AFTER DEMO!
+      // for DEMO replace local generated links with downloaded production links - REMOVE THIS AFTER DEMO!
       paramValues = paramValues.map(function (paramValue) { return paramValue.replace('http://railsdev:9000', 'https://learn.concord.org'); });
 
       columns = columns.filter(function (column) {
@@ -182,8 +187,8 @@ var query = function (req, res, download) {
               row[column] = parseRubyHash(row[column]);
             }
           });
-          if (classId) {
-            row.class_id = classId;
+          if (offering.clazz_id) {
+            row.class_id = offering.clazz_id;
           }
           if (!startedResponse) {
             res.write('[\n');
@@ -208,9 +213,7 @@ var query = function (req, res, download) {
 
 app.get('/', function (req, res) {
   var params = {
-    lara_id: 'LARA-ACTIVITY-ID',
-    portal_token: 'PORTAL-TOKEN',
-    class_id: 'OPTIONAL-CLASS-ID'
+    portal_token: 'PORTAL-GENERATED-TOKEN'
   };
   res.success({
     links: {
