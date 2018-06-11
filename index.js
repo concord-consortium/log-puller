@@ -221,6 +221,55 @@ var query = function (req, res, download) {
   });
 };
 
+var dump = function (req, res) {
+  var dumpKey = req.query.dump_key;
+  if (!dumpKey) {
+    return res.error('Missing dump_key query parameter');
+  }
+  if (dumpKey !== process.env.DUMP_KEY) {
+    return res.error('Incorrect dump_key');
+  }
+
+  res.contentType('application/json');
+  res.setHeader('Content-disposition', 'attachment; filename="log-manager-dump.json"');
+
+  req.db(function (client, done) {
+    var startedResponse = false;
+
+    client
+      .query("SELECT id, session, username, application, activity, event, time, parameters, extras, event_value, run_remote_endpoint FROM logs")
+      .on('error', function (err) {
+        done();
+        res.error(err.toString());
+      })
+      .on('row', function (row) {
+        ["parameters", "extras"].forEach(function (column) {
+          if (row.hasOwnProperty(column)) {
+            row[column] = parseRubyHash(row[column]);
+          }
+        });
+        if (!startedResponse) {
+          res.write('[\n');
+          startedResponse = true;
+        }
+        else {
+          res.write(',\n');
+        }
+        delete row.parameters;
+        delete row.extras;
+        res.write(JSON.stringify(row));
+      })
+      .on('end', function () {
+        done();
+        if (!startedResponse) {
+          res.write('[\n');
+        }
+        res.write('\n]\n');
+        res.end();
+      });
+  });
+};
+
 app.get('/', function (req, res) {
   var params = {
     portal_token: 'PORTAL-GENERATED-TOKEN'
@@ -249,6 +298,10 @@ app.get('/view', function (req, res) {
 
 app.get('/download', function (req, res) {
   query(req, res, true);
+});
+
+app.get('/dump', function (req, res) {
+  dump(req, res);
 });
 
 app.listen(port, function () {
