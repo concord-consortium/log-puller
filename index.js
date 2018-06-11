@@ -234,8 +234,6 @@ var dump = function (req, res) {
   res.setHeader('Content-disposition', 'attachment; filename="log-manager-dump.json"');
 
   req.db(function (client, done) {
-    var startedResponse = false;
-
     client
       .query("SELECT id, session, username, application, activity, event, time, parameters, extras, event_value, run_remote_endpoint FROM logs")
       .on('error', function (err) {
@@ -248,23 +246,13 @@ var dump = function (req, res) {
             row[column] = parseRubyHash(row[column]);
           }
         });
-        if (!startedResponse) {
-          res.write('[\n');
-          startedResponse = true;
-        }
-        else {
-          res.write(',\n');
-        }
         delete row.parameters;
         delete row.extras;
         res.write(JSON.stringify(row));
+        res.write('\n');
       })
       .on('end', function () {
         done();
-        if (!startedResponse) {
-          res.write('[\n');
-        }
-        res.write('\n]\n');
         res.end();
       });
   });
