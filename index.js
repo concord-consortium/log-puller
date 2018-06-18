@@ -279,7 +279,7 @@ var wgetList = function (req, res) {
 
   req.db(function (client, done) {
     client
-      .query("SELECT COUNT(*) AS total, MIN(id) AS min_id, MAX(id) AS max_id FROM logs")
+      .query("SELECT MIN(id) AS min_id, MAX(id) AS max_id FROM logs")
       .on('error', function (err) {
         done();
         res.error(err.toString());
@@ -289,7 +289,7 @@ var wgetList = function (req, res) {
         var maxId = parseInt(row.max_id);
         var numRows = parseInt(req.query.num_rows) || 1000;
 
-        res.write('# count = ' + row.total + ' min_id = ' + row.min_id + ' max_id = ' + row.max_id + '\n');
+        res.write('# min_id = ' + row.min_id + ' max_id = ' + row.max_id + '\n');
 
         for (var i = minId; i < maxId; i += numRows) {
           res.write('wget -O ' + getDumpName(i) + " 'https://log-puller.herokuapp.com/dump?dump_key=" + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + "'\n");
