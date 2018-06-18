@@ -242,7 +242,7 @@ var dump = function (req, res) {
 
   req.db(function (client, done) {
     client
-      .query("SELECT id, session, username, application, activity, event, time, parameters, extras, event_value, run_remote_endpoint FROM logs where id >= " + startRow + " and id < " + (startRow + numRows))
+      .query("SELECT id, session, username, application, activity, event, time, parameters, extras, event_value, run_remote_endpoint FROM logs where id >= " + startRow + " LIMIT " + numRows)
       .on('error', function (err) {
         done();
         res.error(err.toString());
