@@ -289,7 +289,7 @@ var wgetList = function (req, res) {
         var numRows = req.query.num_rows || 1000;
 
         for (var i = minId; i < maxId; i += numRows) {
-          res.write('wget -O ' + getDumpName(startRow) + ' https://log-puller.herokuapp.com/dump?dump_key=' + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + '\n');
+          res.write('wget -O ' + getDumpName(i) + ' https://log-puller.herokuapp.com/dump?dump_key=' + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + '\n');
         }
       })
       .on('end', function () {
