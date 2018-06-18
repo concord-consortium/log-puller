@@ -278,13 +278,19 @@ var wgetList = function (req, res) {
 
   req.db(function (client, done) {
     client
-      .query("select date_trunc('hour', time) as hour_time from logs group by date_trunc('hour', time) order by hour_time limit 10")
+      .query("SELECT MIN(id) AS min_id, MAX(id) AS max_id FROM logs")
       .on('error', function (err) {
         done();
         res.error(err.toString());
       })
       .on('row', function (row) {
-        res.write('wget -O ' + getDumpName(row.hour_time) + ' https://log-puller.herokuapp.com/dump?dump_key=' + dumpKey + '&hour=' + row.hour_time + '\n');
+        var minId = parseInt(row.min_id);
+        var maxId = parseInt(row.max_id);
+        var numRows = parseInt(req.query.num_rows) || 1000;
+
+        for (var i = minId; i < maxId; i += numRows) {
+          res.write('wget -O ' + getDumpName(i) + ' https://log-puller.herokuapp.com/dump?dump_key=' + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + '\n');
+        }
       })
       .on('end', function () {
         done();
