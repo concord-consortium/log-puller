@@ -278,7 +278,7 @@ var wgetList = function (req, res) {
 
   req.db(function (client, done) {
     client
-      .query("select date_trunc('hour', time) as hour_time from logs group by date_trunc('hour', time) order by hour_time")
+      .query("select date_trunc('hour', time) as hour_time from logs group by date_trunc('hour', time) order by hour_time limit 10")
       .on('error', function (err) {
         done();
         res.error(err.toString());
