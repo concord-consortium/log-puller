@@ -221,6 +221,10 @@ var query = function (req, res, download) {
   });
 };
 
+var getDumpName = function (startRow) {
+  return 'log-manager-dump-' + startRow + '.json';
+};
+
 var dump = function (req, res) {
   var dumpKey = req.query.dump_key;
   if (!dumpKey) {
@@ -230,8 +234,11 @@ var dump = function (req, res) {
     return res.error('Incorrect dump_key');
   }
 
+  var startRow = req.query.start_row || 1;
+  var numRows = req.query.num_rows || 1000;
+
   res.contentType('application/json');
-  res.setHeader('Content-disposition', 'attachment; filename="log-manager-dump.json"');
+  res.setHeader('Content-disposition', 'attachment; filename="' + getDumpName(startRow) + '"');
 
   req.db(function (client, done) {
     client
@@ -250,6 +257,40 @@ var dump = function (req, res) {
         delete row.extras;
         res.write(JSON.stringify(row));
         res.write('\n');
+      })
+      .on('end', function () {
+        done();
+        res.end();
+      });
+  });
+};
+
+var wgetList = function (req, res) {
+  var dumpKey = req.query.dump_key;
+  if (!dumpKey) {
+    return res.error('Missing dump_key query parameter');
+  }
+  if (dumpKey !== process.env.DUMP_KEY) {
+    return res.error('Incorrect dump_key');
+  }
+
+  res.contentType('text/plain');
+
+  req.db(function (client, done) {
+    client
+      .query("SELECT MIN(id) AS min_id, MAX(id) AS max_id FROM logs")
+      .on('error', function (err) {
+        done();
+        res.error(err.toString());
+      })
+      .on('row', function (row) {
+        var minId = parseInt(row.min_id);
+        var maxId = parseInt(row.max_id);
+        var numRows = req.query.num_rows || 1000;
+
+        for (var i = minId; i < maxId; i += numRows) {
+          res.write('wget -O ' + getDumpName(startRow) + ' https://log-puller.herokuapp.com/dump?dump_key=' + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + '\n');
+        }
       })
       .on('end', function () {
         done();
@@ -290,6 +331,10 @@ app.get('/download', function (req, res) {
 
 app.get('/dump', function (req, res) {
   dump(req, res);
+});
+
+app.get('/wget-list', function (req, res) {
+  wgetList(req, res);
 });
 
 app.listen(port, function () {
