@@ -237,7 +237,6 @@ var dump = function (req, res) {
   var startRow = parseInt(req.query.start_row) || 1;
   var numRows = parseInt(req.query.num_rows) || 1000;
   var sql = "SELECT id, session, username, application, activity, event, time, parameters, extras, event_value, run_remote_endpoint FROM logs where id >= " + startRow + " and id < " + (startRow + numRows) + " order by id";
-  console.error("SQL", sql);
 
   res.contentType('application/json');
   res.setHeader('Content-disposition', 'attachment; filename="' + getDumpName(startRow) + '"');
@@ -291,7 +290,7 @@ var wgetList = function (req, res) {
         var numRows = parseInt(req.query.num_rows) || 1000;
 
         for (var i = minId; i < maxId; i += numRows) {
-          res.write('wget -O ' + getDumpName(i) + ' https://log-puller.herokuapp.com/dump?dump_key=' + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + '\n');
+          res.write('wget -O ' + getDumpName(i) + " 'https://log-puller.herokuapp.com/dump?dump_key=" + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + "'\n");
         }
       })
       .on('end', function () {
