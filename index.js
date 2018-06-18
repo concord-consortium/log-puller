@@ -286,7 +286,7 @@ var wgetList = function (req, res) {
       .on('row', function (row) {
         var minId = parseInt(row.min_id);
         var maxId = parseInt(row.max_id);
-        var numRows = req.query.num_rows || 1000;
+        var numRows = parseInt(req.query.num_rows) || 1000;
 
         for (var i = minId; i < maxId; i += numRows) {
           res.write('wget -O ' + getDumpName(i) + ' https://log-puller.herokuapp.com/dump?dump_key=' + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + '\n');
