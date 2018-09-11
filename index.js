@@ -185,10 +185,8 @@ var query = function (req, res, download) {
         return exclude.indexOf(column) === -1;
       }).join(", ");
 
-      var sql = "SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND extras->'run_remote_endpoint' in (" + endpointMarkers + ')';
-      console.log("QUERY:", sql);
       client
-        .query(sql, paramValues)
+        .query("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND extras->'run_remote_endpoint' in (" + endpointMarkers + ')', paramValues)
         .on('error', function (err) {
           done();
           res.error(err.toString());
