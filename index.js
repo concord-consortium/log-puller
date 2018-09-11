@@ -71,12 +71,12 @@ app.use(function (req, res, next) {
         return res.error('Invalid portal token: ' + err);
       }
 
-      if (!decoded || !decoded.claims || !decoded.claims.offering_info_url) {
-        return res.error('Invalid portal token format (missing claims.offering_info_url).  Decoded token is ' + JSON.stringify(decoded));
+      if (!decoded || !decoded.offering_info_url) {
+        return res.error('Invalid portal token format (missing offering_info_url).  Decoded token is ' + JSON.stringify(decoded));
       }
 
       superagent
-        .get(decoded.claims.offering_info_url)
+        .get(decoded.offering_info_url)
         .set('Content-Type', 'application/json')
         .set('Authorization', 'Bearer/JWT ' + token)
         .end(function (err, portalRes) {

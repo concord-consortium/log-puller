@@ -17,9 +17,7 @@ looks like the following:
 {
   "exp": 1490876553,
   "uid": 1777,
-  "claims": {
-    "offering_info_url": "https://learn.concord.org/api/v1/offerings/4164"
-  }
+  "offering_info_url": "https://learn.concord.org/api/v1/offerings/4164"
 }
 ```
 
