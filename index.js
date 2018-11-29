@@ -1,3 +1,7 @@
+var OUTPUT_JSON_STEP = "output-json";
+var OUTPUT_CSV_STEP = "output-csv";
+var GET_EXPLODED_COLUMNS_STEP = "get-exploded-columns";
+
 var express = require('express');
 var app = express();
 var port = process.env.PORT || 3000;
@@ -6,6 +10,11 @@ var url = require('url');
 var URLSafeBase64 = require('urlsafe-base64');
 var superagent = require('superagent');
 var jwt = require('jsonwebtoken');
+var hstore = require('pg-hstore')();
+var papaparse = require('papaparse');
+var crypto = require('crypto');
+var bodyParser = require('body-parser');
+var path = require('path');
 
 pg.defaults.ssl = process.env.PG_SSL !== 'false';
 
@@ -18,12 +27,18 @@ var pool = new pg.Pool({
   host: dbParams.hostname,
   port: dbParams.port,
   database: dbParams.pathname.split('/')[1],
-  ssl: true
+  ssl: pg.defaults.ssl
 });
+
+app.set('views', path.join(__dirname, 'views'));
+app.set('view engine', 'pug');
+
+app.use(bodyParser.urlencoded({extended: true}));
+app.use(bodyParser.json());
 
 app.use(function (req, res, next) {
 
-  res.contentType('application/json');
+  res.type('json');
 
   res.error = function (message, code) {
     code = code || 500;
@@ -96,47 +111,6 @@ app.use(function (req, res, next) {
   }
 });
 
-var parseRubyHash = function (rubyHashString) {
-  var result = {};
-  var chars = rubyHashString.split("");
-  var index = 0;
-  var ch = chars[index];
-
-  var readString = function () {
-    if (ch !== '"') {
-      return null;
-    }
-    var string = [];
-    var prevCh = chars[index - 1];
-    match('"');
-    while ((index < chars.length) && (ch !== '"') && (prevCh !== '\\')) {
-      string.push(ch);
-      prevCh = ch;
-      advance(1);
-    }
-    match('"');
-    return string.join("");
-  };
-  var advance = function (n) {
-    index += n;
-    ch = chars[index];
-  };
-  var match = function (lexeme) {
-    advance(lexeme.length);
-  };
-
-  while (index < chars.length) {
-    var key = readString();
-    match("=>");
-    result[key] = readString();
-    while ((index < chars.length) && (ch !== '"')) {
-      advance(1);
-    }
-  }
-
-  return result;
-};
-
 var query = function (req, res, download) {
   var portalToken = req.query.portal_token;
   if (!portalToken) {
@@ -165,7 +139,6 @@ var query = function (req, res, download) {
       return res.error('No student data was found for the activity');
     }
 
-    res.contentType('application/json');
     if (download) {
       res.setHeader('Content-disposition', 'attachment; filename="activity-' + activityId + '-class-' + offering.clazz_id + '.json"');
     }
@@ -177,9 +150,6 @@ var query = function (req, res, download) {
       var paramValues = ['activity: ' + activityId].concat(endPoints);
       var endpointMarkers = endPoints.map(function (endPoint, i) { return '$' + (i+2); }); // +2 because activity name is $1
       var startedResponse = false;
-
-      // for DEMO replace local generated links with downloaded production links - REMOVE THIS AFTER DEMO!
-      paramValues = paramValues.map(function (paramValue) { return paramValue.replace('http://railsdev:9000', 'https://learn.concord.org'); });
 
       columns = columns.filter(function (column) {
         return exclude.indexOf(column) === -1;
@@ -194,7 +164,9 @@ var query = function (req, res, download) {
         .on('row', function (row) {
           ["parameters", "extras"].forEach(function (column) {
             if (row.hasOwnProperty(column)) {
-              row[column] = parseRubyHash(row[column]);
+              hstore.parse(row[column], function (result) {
+                row[column] = result;
+              });
             }
           });
           if (offering.clazz_id) {
@@ -221,84 +193,151 @@ var query = function (req, res, download) {
   });
 };
 
-var getDumpName = function (startRow) {
-  return 'log-manager-dump-' + startRow + '.json';
-};
+var outputPortalReport = function (req, res) {
+  var isCSV = req.body.format === "csv";
+  var explode = req.body.explode === "yes";
 
-var dump = function (req, res) {
-  var dumpKey = req.query.dump_key;
-  if (!dumpKey) {
-    return res.error('Missing dump_key query parameter');
-  }
-  if (dumpKey !== process.env.DUMP_KEY) {
-    return res.error('Incorrect dump_key');
+  if (!process.env.JWT_HMAC_SECRET) {
+    return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate json signature');
   }
 
-  var startRow = parseInt(req.query.start_row) || 1;
-  var numRows = parseInt(req.query.num_rows) || 1000;
-  var sql = "SELECT id, session, username, application, activity, event, time, parameters, extras, event_value, run_remote_endpoint FROM logs where id >= " + startRow + " and id < " + (startRow + numRows) + " order by id";
+  var json = req.body.json;
+  if (!json) {
+    return res.error('Missing json query parameter');
+  }
+  var signature = req.body.signature;
+  if (!signature) {
+    return res.error('Missing signature query parameter');
+  }
+  var hmac = crypto.createHmac('sha256', process.env.JWT_HMAC_SECRET);
+  hmac.update(json);
+  var signatureBuffer = new Buffer(signature);
+  var digestBuffer = new Buffer(hmac.digest('hex'));
+  if ((signatureBuffer.length !== digestBuffer.length) || !crypto.timingSafeEqual(signatureBuffer, digestBuffer)) {
+    return res.error('Invalid signature for json parameter');
+  }
 
-  res.contentType('application/json');
-  res.setHeader('Content-disposition', 'attachment; filename="' + getDumpName(startRow) + '"');
+  try {
+    json = JSON.parse(json);
+  }
+  catch (e) {
+    return res.error('Unable to parse json parameter');
+  }
+  if (!json || !json.filter) {
+    return res.error('Missing query filter section in json parameter');
+  }
+
+  var endpointValues = [];
+  var endpointMarkers = [];
+  var endpointMarkerIndex = 1;
+  json.filter.forEach((filter) => {
+    if (filter.key === 'run_remote_endpoint') {
+      (filter.list || []).forEach(function (endpoint) {
+        endpointValues.push(endpoint);
+        endpointMarkers.push('$' + endpointMarkerIndex++);
+      });
+    }
+  });
+  if (endpointValues.length === 0) {
+    return res.error('Invalid query, no valid run_remote_endpoint filters found in json parameter');
+  }
+
+  res.type(isCSV ? 'csv' : 'json');
+  res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
 
   req.db(function (client, done) {
-    client
-      .query(sql)
+    var rows = [];
+    var startedResponse = false;
+    var columns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
+    var objectColumns = ['parameters', 'extras'];
+    var sql = `SELECT ${columns.join(', ')} FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`;
+
+    var processQuery = function (step) {
+      client
+      .query(sql, endpointValues)
       .on('error', function (err) {
         done();
         res.error(err.toString());
       })
       .on('row', function (row) {
-        ["parameters", "extras"].forEach(function (column) {
+        objectColumns.forEach(function (column) {
           if (row.hasOwnProperty(column)) {
-            row[column] = parseRubyHash(row[column]);
+            hstore.parse(row[column], function (result) {
+              row[column] = result;
+            });
+            if (step == GET_EXPLODED_COLUMNS_STEP) {
+              Object.keys(row[column] || {}).forEach(function (explodedColumn) {
+                if (columns.indexOf(explodedColumn) === -1) {
+                  columns.push(explodedColumn);
+                }
+              });
+            }
           }
         });
-        delete row.parameters;
-        delete row.extras;
-        res.write(JSON.stringify(row));
-        res.write('\n');
-      })
-      .on('end', function () {
-        done();
-        res.end();
-      });
-  });
-};
-
-var wgetList = function (req, res) {
-  var dumpKey = req.query.dump_key;
-  if (!dumpKey) {
-    return res.error('Missing dump_key query parameter');
-  }
-  if (dumpKey !== process.env.DUMP_KEY) {
-    return res.error('Incorrect dump_key');
-  }
-
-  res.contentType('text/plain');
-
-  req.db(function (client, done) {
-    client
-      .query("SELECT MIN(id) AS min_id, MAX(id) AS max_id FROM logs")
-      .on('error', function (err) {
-        done();
-        res.error(err.toString());
-      })
-      .on('row', function (row) {
-        var minId = parseInt(row.min_id);
-        var maxId = parseInt(row.max_id);
-        var numRows = parseInt(req.query.num_rows) || 1000;
-
-        res.write('# min_id = ' + row.min_id + ' max_id = ' + row.max_id + '\n');
-
-        for (var i = minId; i < maxId; i += numRows) {
-          res.write('wget -O ' + getDumpName(i) + " 'https://log-puller.herokuapp.com/dump?dump_key=" + dumpKey + '&start_row=' + i + '&num_rows=' + numRows + "'\n");
+        if (step != GET_EXPLODED_COLUMNS_STEP) {
+          if (!startedResponse) {
+            if (step === OUTPUT_JSON_STEP) {
+              res.write('[\n');
+            }
+            else if (step === OUTPUT_CSV_STEP) {
+              if (explode) {
+                // remove parameters and extras since they have been exploded into the columns
+                columns.splice(columns.indexOf('parameters'), 1);
+                columns.splice(columns.indexOf('extras'), 1);
+              }
+              res.write(columns.join(",") + '\n');
+            }
+            startedResponse = true;
+          }
+          else {
+            if (step === OUTPUT_JSON_STEP) {
+              res.write(',\n');
+            }
+          }
+          if (step === OUTPUT_JSON_STEP) {
+            res.write(JSON.stringify(row));
+          }
+          else if (step === OUTPUT_CSV_STEP) {
+            var csvRow = {
+              fields: columns,
+              data: []
+            };
+            columns.forEach(function (column) {
+              var value = "";
+              if (row.hasOwnProperty(column)) {
+                var stringify = objectColumns.indexOf(column) !== -1;
+                value = stringify ? JSON.stringify(row[column]) : row[column];
+              }
+              else if (explode) {
+                objectColumns.forEach(function (explodedColumn) {
+                  if ((row[explodedColumn] || {}).hasOwnProperty(column)) {
+                    value = row[explodedColumn][column];
+                  }
+                });
+              }
+              csvRow.data.push(value);
+            });
+            res.write(papaparse.unparse(csvRow, {header: false}) + '\n');
+          }
         }
       })
       .on('end', function () {
-        done();
-        res.end();
+        if (step === GET_EXPLODED_COLUMNS_STEP) {
+          processQuery(OUTPUT_CSV_STEP);
+        }
+        else {
+          done();
+          if (step === OUTPUT_JSON_STEP) {
+            if (!startedResponse) {
+              res.write('[\n');
+            }
+            res.write('\n]\n');
+          }
+          res.end();
+        }
       });
+    };
+    processQuery(isCSV ? (explode ? GET_EXPLODED_COLUMNS_STEP : OUTPUT_CSV_STEP) : OUTPUT_JSON_STEP);
   });
 };
 
@@ -319,10 +358,22 @@ app.get('/', function (req, res) {
       view: {
         desc: 'link to view query results (note need for portal generated token)',
         url: req.apiUrl('/view', params)
+      },
+      "portal-report": {
+        desc: 'link to download report results (note need for json query and signature)',
+        url: req.apiUrl('/portal-report', {
+          json: 'PORTAL-REPORT-JSON',
+          signature: 'HEX-HMAC-OF-PORTAL-REPORT-JSON',
+        })
       }
     }
   });
 });
+
+var renderPortalReportForm = function (req, res, params) {
+  res.type('html');
+  res.render('portal-report', params);
+};
 
 app.get('/view', function (req, res) {
   query(req, res, false);
@@ -332,12 +383,22 @@ app.get('/download', function (req, res) {
   query(req, res, true);
 });
 
-app.get('/dump', function (req, res) {
-  dump(req, res);
+app.get('/portal-report', function (req, res) {
+  renderPortalReportForm(req, res, req.query);
 });
 
-app.get('/wget-list', function (req, res) {
-  wgetList(req, res);
+app.get('/portal-report-tester', function (req, res) {
+  res.type('html');
+  res.render('portal-report-tester', req.query);
+});
+
+app.post('/portal-report', function (req, res) {
+  if (req.body.download) {
+    outputPortalReport(req, res);
+  }
+  else {
+    renderPortalReportForm(req, res, req.body);
+  }
 });
 
 app.listen(port, function () {

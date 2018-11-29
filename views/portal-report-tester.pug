@@ -1,0 +1,18 @@
+html
+  head
+    title Concord Portal Report POST Tester
+    include portal-report-style.pug
+  body
+    .header Concord Portal Report POST Tester
+    .workspace
+      form(method='post', action='/portal-report')
+        p.note
+          | This is here to allow testing of POSTs to /portal-report
+        p
+          label(for='json') JSON Query
+          textarea(name='json')= json
+        p
+          label(for='signature') HMAC Signature
+          input(type='text', name='signature', value=signature)
+        p
+          input(type='submit', value='Test Concord Portal Report')
