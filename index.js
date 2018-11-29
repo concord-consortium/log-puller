@@ -33,8 +33,8 @@ var pool = new pg.Pool({
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
 
-app.use(bodyParser.urlencoded({extended: true}));
-app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({extended: true, limit: "50mb", parameterLimit:50000}));
+app.use(bodyParser.json({limit: "50mb"}));
 
 app.use(function (req, res, next) {
 
