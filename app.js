@@ -15,6 +15,7 @@ const papaparse = require('papaparse');
 const crypto = require('crypto');
 const bodyParser = require('body-parser');
 const path = require('path');
+const _ = require('lodash');
 
 pg.defaults.ssl = process.env.PG_SSL !== 'false';
 
@@ -30,6 +31,35 @@ const pool = new pg.Pool({
   ssl: pg.defaults.ssl
 });
 
+let mockDBClient = null;
+const mockDB = (options) => {
+  mockDBClient = options ? new MockDBClient(options) : null;
+};
+class MockDBClient {
+  constructor(options) {
+    this.options = options;
+    this.eventCallbacks = {};
+  }
+  query() {
+    return this;
+  }
+  on(event, cb) {
+    this.eventCallbacks[event] = cb;
+    if (event === 'end') {
+      setTimeout(() => this.runEvents(), 1);
+    }
+    return this;
+  }
+  runEvents() {
+    // copy the rows so requeries use original values
+    const rows = _.cloneDeep(this.options.rows || []);
+    rows.forEach((row) => {
+      this.eventCallbacks.row(row);
+    });
+    this.eventCallbacks.end();
+  }
+}
+
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
 
@@ -42,7 +72,7 @@ app.use((req, res, next) => {
 
   res.error = (message, code) => {
     code = code || 500;
-    res.code = code;
+    res.status(code);
     res.json({success: false, error: message});
   };
 
@@ -65,29 +95,34 @@ app.use((req, res, next) => {
   };
 
   req.db = (cb) => {
-    pool.connect((err, client, done) => {
-      if (err) {
-        res.error(err.toString());
-      }
-      else {
-        cb(client, done);
-      }
-    });
+    if (mockDBClient) {
+      cb(mockDBClient, () => {});
+    }
+    else {
+      pool.connect((err, client, done) => {
+        if (err) {
+          res.error(err.toString(), 500);
+        }
+        else {
+          cb(client, done);
+        }
+      });
+    }
   };
 
   req.getOfferingInfo = (token, cb) => {
 
     if (!process.env.JWT_HMAC_SECRET) {
-      return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate portal token');
+      return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate portal token)', 500);
     }
 
-    jwt.verify(token, process.env.JWT_HMAC_SECRET, (err, decoded) => {
+    jwt.verify(token, process.env.JWT_HMAC_SECRET, {algorithms: ['HS256']}, (err, decoded) => {
       if (err) {
-        return res.error('Invalid portal token: ' + err);
+        return res.error('Invalid portal token: ' + err, 401);
       }
 
       if (!decoded || !decoded.offering_info_url) {
-        return res.error('Invalid portal token format (missing offering_info_url).  Decoded token is ' + JSON.stringify(decoded));
+        return res.error('Invalid portal token format (missing offering_info_url)', 401);
       }
 
       superagent
@@ -96,7 +131,7 @@ app.use((req, res, next) => {
         .set('Authorization', 'Bearer/JWT ' + token)
         .end((err, portalRes) => {
           if (err) {
-            return res.error('Invalid portal token: portal returned "' + err + '"');
+            return res.error('Invalid portal token: portal returned "' + err + '"', 401);
           }
           cb(portalRes.body);
         });
@@ -114,7 +149,7 @@ app.use((req, res, next) => {
 const query = (req, res, download) => {
   const portalToken = req.query.portal_token;
   if (!portalToken) {
-    return res.error('Missing portal_token query parameter');
+    return res.error('Missing portal_token query parameter', 400);
   }
 
   req.getOfferingInfo(portalToken, (offering) => {
@@ -136,7 +171,7 @@ const query = (req, res, download) => {
       .filter((student) => (student.endpoint_url !== null) && (student.endpoint_url.length > 0))
       .map((student) => student.endpoint_url);
     if (endPoints.length === 0) {
-      return res.error('No student data was found for the activity');
+      return res.error('No student data was found for the activity', 400);
     }
 
     if (download) {
@@ -157,7 +192,7 @@ const query = (req, res, download) => {
         .query("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND run_remote_endpoint in (" + endpointMarkers + ')', paramValues)
         .on('error', (err) => {
           done();
-          res.error(err.toString());
+          res.error(err.toString(), 500);
         })
         .on('row', (row) => {
           ["parameters", "extras"].forEach((column) => {
@@ -196,33 +231,33 @@ const outputPortalReport = (req, res) => {
   const explode = req.body.explode === "yes";
 
   if (!process.env.JWT_HMAC_SECRET) {
-    return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate json signature');
+    return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate json signature', 500);
   }
 
   let json = req.body.json;
   if (!json) {
-    return res.error('Missing json query parameter');
+    return res.error('Missing json body parameter', 400);
   }
   const signature = req.body.signature;
   if (!signature) {
-    return res.error('Missing signature query parameter');
+    return res.error('Missing signature body parameter', 400);
   }
   const hmac = crypto.createHmac('sha256', process.env.JWT_HMAC_SECRET);
   hmac.update(json);
   const signatureBuffer = new Buffer(signature);
   const digestBuffer = new Buffer(hmac.digest('hex'));
   if ((signatureBuffer.length !== digestBuffer.length) || !crypto.timingSafeEqual(signatureBuffer, digestBuffer)) {
-    return res.error('Invalid signature for json parameter');
+    return res.error('Invalid signature for json parameter', 400);
   }
 
   try {
     json = JSON.parse(json);
   }
   catch (e) {
-    return res.error('Unable to parse json parameter');
+    return res.error('Unable to parse json parameter', 500);
   }
   if (!json || !json.filter) {
-    return res.error('Missing query filter section in json parameter');
+    return res.error('Missing query filter section in json parameter', 400);
   }
 
   const endpointValues = [];
@@ -237,7 +272,7 @@ const outputPortalReport = (req, res) => {
     }
   });
   if (endpointValues.length === 0) {
-    return res.error('Invalid query, no valid run_remote_endpoint filters found in json parameter');
+    return res.error('Invalid query, no valid run_remote_endpoint filters found in json parameter', 400);
   }
 
   res.type(isCSV ? 'csv' : 'json');
@@ -255,7 +290,7 @@ const outputPortalReport = (req, res) => {
       .query(sql, endpointValues)
       .on('error', (err) => {
         done();
-        res.error(err.toString());
+        res.error(err.toString(), 500);
       })
       .on('row', (row) => {
         objectColumns.forEach((column) => {
@@ -399,4 +434,4 @@ app.post('/portal-report', (req, res) => {
   }
 });
 
-module.exports = {app, port};
+module.exports = {app, port, mockDB};
