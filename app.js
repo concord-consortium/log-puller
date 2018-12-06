@@ -7,7 +7,6 @@ const app = express();
 const port = process.env.PORT || 3000;
 const pg = require('pg');
 const url = require('url');
-const URLSafeBase64 = require('urlsafe-base64');
 const superagent = require('superagent');
 const jwt = require('jsonwebtoken');
 const hstore = require('pg-hstore')();
@@ -16,6 +15,7 @@ const crypto = require('crypto');
 const bodyParser = require('body-parser');
 const path = require('path');
 const _ = require('lodash');
+const parseQuery = require('./parse-query');
 
 pg.defaults.ssl = process.env.PG_SSL !== 'false';
 
@@ -256,21 +256,18 @@ const outputPortalReport = (req, res) => {
   catch (e) {
     return res.error('Unable to parse json parameter', 500);
   }
-  if (!json || !json.filter) {
-    return res.error('Missing query filter section in json parameter', 400);
+
+  let endpointValues = [];
+  let endpointMarkers = [];
+  try {
+    const result = parseQuery(json)
+    endpointValues = result.endpointValues;
+    endpointMarkers = result.endpointMarkers;
+  }
+  catch (e) {
+    return res.error(e.message, 400)
   }
 
-  const endpointValues = [];
-  const endpointMarkers = [];
-  let endpointMarkerIndex = 1;
-  json.filter.forEach((filter) => {
-    if (filter.key === 'run_remote_endpoint') {
-      (filter.list || []).forEach((endpoint) => {
-        endpointValues.push(endpoint);
-        endpointMarkers.push('$' + endpointMarkerIndex++);
-      });
-    }
-  });
   if (endpointValues.length === 0) {
     return res.error('Invalid query, no valid run_remote_endpoint filters found in json parameter', 400);
   }
@@ -279,7 +276,6 @@ const outputPortalReport = (req, res) => {
   res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
 
   req.db((client, done) => {
-    const rows = [];
     let startedResponse = false;
     const columns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
     const objectColumns = ['parameters', 'extras'];

@@ -194,12 +194,12 @@ describe('/portal-report', () => {
       .expect({success: false, error: 'Unable to parse json parameter'});
   });
 
-  test('form POST with an json parameter without a filter should fail', () => {
+  test('form POST with an json parameter without a filter or run_remote_endpoints should fail', () => {
     return request(app)
       .post('/portal-report')
       .send({download: true, json: "{}", signature: sign("{}")})
       .expect(400)
-      .expect({success: false, error: 'Missing query filter section in json parameter'});
+      .expect({success: false, error: 'Unsupported query format - missing filter/run_remote_endpoints section in json parameter'});
   });
 
   test('form POST with an json parameter without run_remote_endpoints should fail', () => {
@@ -210,7 +210,7 @@ describe('/portal-report', () => {
       .expect({success: false, error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter'});
   });
 
-  test('json form POST should succeed', () => {
+  test('Log Manager query json form POST should succeed', () => {
     const json = `
     {
       "filter": [
@@ -231,6 +231,30 @@ describe('/portal-report', () => {
           "filter": [],
           "add_child_data": true
       }
+    }
+    `;
+    mockDB({
+      rows: [
+        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
+        {id: 2, event: 'test 2'},
+      ]
+    });
+    return request(app)
+      .post('/portal-report')
+      .send({download: true, json: json, signature: sign(json)})
+      .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.json/)
+      .expect([
+        {id: 1, event: 'test 1', parameters: {foo: 'bar', baz: 'bam'}, extras: {biff: 'true'}},
+        {id: 2, event: 'test 2'},
+      ]);
+  });
+
+  test('Simple query json form POST should succeed', () => {
+    const json = `
+    {
+      "run_remote_endpoints": [
+        "https://example.com/1"
+      ]
     }
     `;
     mockDB({
