@@ -1,0 +1,36 @@
+html
+  head
+    title Concord Portal Report
+    include portal-report-style.pug
+  body
+    .header Concord Portal Report
+    .workspace
+      form(method='post')
+        if !json || !signature
+          p.note
+            | If you are seeing this note you are either a developer testing this form or have not reached this page
+            | using the report portal.  If you are not testing this page please return to the report portal
+            | and use the "Download Portal Report" button to properly set the needed parameters.
+          p
+            label(for='json') For testing: JSON Query from Portal
+            textarea(name='json')= json
+          p
+            label(for='signature') For testing: HMAC Signature from Portal
+            input(type='text', name='signature', value=signature)
+        else
+          input(type='hidden', name='json', value=json)
+          input(type='hidden', name='signature', value=signature)
+        p
+          label(for='format') Format
+          input(type='radio', name='format', value='json', checked=1)
+          | JSON
+          input(type='radio', name='format', value='csv')
+          | CSV
+        p
+          label(for='explode') Expand Parameters and Extras in CSV
+          input(type='radio', name='explode', value='no', checked=1)
+          | No
+          input(type='radio', name='explode', value='yes')
+          | Yes
+        p
+          input(type='submit', name='download', value='Download Concord Portal Report')
