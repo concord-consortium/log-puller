@@ -83,6 +83,22 @@ with the application name set to `LARA-log-poc`, the activity set to `activity: 
 The results of that query are either streamed one row at a time (to save memory) when the view endpoint it used or
 downloaded as a file if the download option is used.
 
+## Development
+
+Install Docker and make sure that docker-compose is installed too (it should be part of the standard Docker installation).
+
+```
+git clone git@github.com:concord-consortium/log-puller.git
+cd log-puller
+docker-compose up 
+```
+
+Now open your browser to http://localhost:5000/portal-report-tester.
+
+If you're using Dinghy HTTP Proxy (https://github.com/concord-consortium/rigse/blob/master/docs/docker.md#setting-up-a-dns-and-proxy-to-avoid-port-conflicts), 
+you can also go to http://app.log-puller.docker/portal-report-tester.  
+
+
 ## License
 
 log-puller is Copyright 2017 (c) by the Concord Consortium and is distributed under the [MIT license](http://www.opensource.org/licenses/MIT).
