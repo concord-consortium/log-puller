@@ -1,0 +1,43 @@
+version: '3'
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile-dev
+    command: docker/dev/run.sh
+    environment:
+      PORT: 5000
+      DATABASE_URL: postgres://log_puller:log_puller@postgres/log_puller_development
+      PG_SSL: 'false'
+      JWT_HMAC_SECRET: foo
+      HEROKU: 'false'
+    volumes:
+      - .:/log-puller
+      - node_modules:/node_modules
+    networks:
+      # app service needs to be on default network too so it
+      # can connect to postgres
+      default:
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:9.3
+    environment:
+      POSTGRES_PASSWORD: log_puller
+      POSTGRES_USER:     log_puller
+      POSTGRES_DB:       log_puller_development
+    ports:
+      - 5432
+    command: postgres
+    volumes:
+      # Use named volume for storage dir
+      - postgres:/var/lib/postgresql/data
+      # Enable extensions
+      - ./docker/dev/postgres-extensions:/docker-entrypoint-initdb.d
+
+volumes:
+  node_modules:
+  postgres:
