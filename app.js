@@ -288,7 +288,8 @@ const outputPortalReport = (req, res) => {
 
   req.db(async (client, done) => {
     let startedResponse = false;
-    const columns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
+    const baseColumns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
+    const columns = baseColumns.slice();
     const objectColumns = ['parameters', 'extras'];
 
     let additionalColumns = [];
@@ -317,7 +318,7 @@ const outputPortalReport = (req, res) => {
       }
     });
 
-    const sql = `SELECT ${columns.join(', ')} FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`;
+    const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`;
     const processQuery = (step) => {
       client
       .query(sql, endpointValues)
