@@ -93,6 +93,9 @@ cd log-puller
 docker-compose up 
 ```
 
+When you run it for the first time, Posgres Docker container will automatically load 
+`schema.sql` file in `docker/dev/docker-entrypoint-initdb.d`.
+
 Now open your browser to http://localhost:5000/portal-report-tester.
 
 If you're using Dinghy HTTP Proxy (https://github.com/concord-consortium/rigse/blob/master/docs/docker.md#setting-up-a-dns-and-proxy-to-avoid-port-conflicts), 

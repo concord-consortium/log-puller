@@ -1,9 +1,9 @@
 html
   head
-    title Concord Portal Report
+    title Concord Log Puller
     include portal-report-style.pug
   body
-    .header Concord Portal Report
+    .header Concord Log Puller
     .workspace
       form(method='post')
         if !json || !signature
@@ -33,4 +33,10 @@ html
           input(type='radio', name='explode', value='yes')
           | Yes
         p
-          input(type='submit', name='download', value='Download Concord Portal Report')
+          label(for='allColumns') Export All Possible Columns in CSV
+          input(type='radio', name='allColumns', value='no', checked=1)
+          | No
+          input(type='radio', name='allColumns', value='yes')
+          | Yes
+        p
+          input(type='submit', name='download', value='Download Logs')
