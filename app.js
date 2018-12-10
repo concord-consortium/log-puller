@@ -1,6 +1,5 @@
 const OUTPUT_JSON_STEP = "output-json";
 const OUTPUT_CSV_STEP = "output-csv";
-const GET_EXPLODED_COLUMNS_STEP = "get-exploded-columns";
 
 const express = require('express');
 const app = express();
@@ -41,22 +40,34 @@ class MockDBClient {
     this.eventCallbacks = {};
   }
   query() {
-    return this;
+    if (this.options.queries) {
+      // Support multiple queries defined in mock config. They will be executed in the provided order.
+      this.options.rows = this.options.queries.shift().rows;
+    }
+    const promise = new Promise(resolve => {
+      this.resolvePromise = resolve;
+    })
+    // Bind .on method so the promise can be ignored and client code can use regular callbacks.
+    promise.on = this.on.bind(this);
+    setTimeout(() => this.runEvents(), 1);
+    return promise;
   }
   on(event, cb) {
     this.eventCallbacks[event] = cb;
-    if (event === 'end') {
-      setTimeout(() => this.runEvents(), 1);
-    }
     return this;
   }
   runEvents() {
     // copy the rows so requeries use original values
     const rows = _.cloneDeep(this.options.rows || []);
-    rows.forEach((row) => {
-      this.eventCallbacks.row(row);
-    });
-    this.eventCallbacks.end();
+    if (this.eventCallbacks.row) {
+      rows.forEach((row) => {
+        this.eventCallbacks.row(row);
+      });
+    }
+    if (this.eventCallbacks.end) {
+      this.eventCallbacks.end();
+    }
+    this.resolvePromise({ rows });
   }
 }
 
@@ -179,7 +190,6 @@ const query = (req, res, download) => {
     }
 
     req.db((client, done) => {
-      const rows = [];
       let columns = ["id", "session", "username", "application", "activity", "event", "time", "parameters", "extras", "event_value"];
       const exclude = (req.query.exclude || "").split(",");
       const paramValues = ['activity: ' + activityId].concat(endPoints);
@@ -229,6 +239,7 @@ const query = (req, res, download) => {
 const outputPortalReport = (req, res) => {
   const isCSV = req.body.format === "csv";
   const explode = req.body.explode === "yes";
+  const allColumns = req.body.allColumns === "yes";
 
   if (!process.env.JWT_HMAC_SECRET) {
     return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate json signature', 500);
@@ -275,12 +286,39 @@ const outputPortalReport = (req, res) => {
   res.type(isCSV ? 'csv' : 'json');
   res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
 
-  req.db((client, done) => {
+  req.db(async (client, done) => {
     let startedResponse = false;
-    const columns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
+    const baseColumns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
+    const columns = baseColumns.slice();
     const objectColumns = ['parameters', 'extras'];
-    const sql = `SELECT ${columns.join(', ')} FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`;
 
+    let additionalColumns = [];
+    if (explode && !allColumns) {
+      const query = `WITH base_ids as (SELECT id FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')}))` +
+                    `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM base_ids) ` +
+                    `UNION ` +
+                    `SELECT DISTINCT (each(extras)).key FROM logs WHERE id IN (SELECT id FROM base_ids)`;
+      const result = await client.query(query, endpointValues);
+      additionalColumns = additionalColumns.concat(result.rows.map(row => row.key));
+    }
+    if (explode && allColumns) {
+      const query = `WITH base_ids as (SELECT id FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})), ` +
+                    `     related_ids as (SELECT id FROM logs WHERE application IN (SELECT DISTINCT application FROM logs WHERE id in (SELECT id FROM base_ids)) AND ` +
+                    `                                               activity IN (SELECT DISTINCT activity FROM logs WHERE id in (SELECT id FROM base_ids))) ` +
+                    `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM related_ids) ` +
+                    `UNION ` +
+                    `SELECT DISTINCT (each(extras)).key FROM logs WHERE id IN (SELECT id FROM related_ids)`;
+      const result = await client.query(query, endpointValues);
+      additionalColumns = additionalColumns.concat(result.rows.map(row => row.key));
+    }
+
+    additionalColumns.sort().forEach(newCol => {
+      if (columns.indexOf(newCol) === -1) {
+        columns.push(newCol);
+      }
+    });
+
+    const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`;
     const processQuery = (step) => {
       client
       .query(sql, endpointValues)
@@ -294,79 +332,65 @@ const outputPortalReport = (req, res) => {
             hstore.parse(row[column], (result) => {
               row[column] = result;
             });
-            if (step == GET_EXPLODED_COLUMNS_STEP) {
-              Object.keys(row[column] || {}).forEach((explodedColumn) => {
-                if (columns.indexOf(explodedColumn) === -1) {
-                  columns.push(explodedColumn);
+          }
+        });
+        if (!startedResponse) {
+          if (step === OUTPUT_JSON_STEP) {
+            res.write('[\n');
+          }
+          else if (step === OUTPUT_CSV_STEP) {
+            if (explode) {
+              // remove parameters and extras since they have been exploded into the columns
+              columns.splice(columns.indexOf('parameters'), 1);
+              columns.splice(columns.indexOf('extras'), 1);
+            }
+            res.write(columns.join(",") + '\n');
+          }
+          startedResponse = true;
+        }
+        else {
+          if (step === OUTPUT_JSON_STEP) {
+            res.write(',\n');
+          }
+        }
+        if (step === OUTPUT_JSON_STEP) {
+          res.write(JSON.stringify(row));
+        }
+        else if (step === OUTPUT_CSV_STEP) {
+          const csvRow = {
+            fields: columns,
+            data: []
+          };
+          columns.forEach((column) => {
+            let value = "";
+            if (row.hasOwnProperty(column)) {
+              const stringify = objectColumns.indexOf(column) !== -1;
+              value = stringify ? JSON.stringify(row[column]) : row[column];
+            }
+            else if (explode) {
+              objectColumns.forEach((explodedColumn) => {
+                if ((row[explodedColumn] || {}).hasOwnProperty(column)) {
+                  value = row[explodedColumn][column];
                 }
               });
             }
-          }
-        });
-        if (step != GET_EXPLODED_COLUMNS_STEP) {
-          if (!startedResponse) {
-            if (step === OUTPUT_JSON_STEP) {
-              res.write('[\n');
-            }
-            else if (step === OUTPUT_CSV_STEP) {
-              if (explode) {
-                // remove parameters and extras since they have been exploded into the columns
-                columns.splice(columns.indexOf('parameters'), 1);
-                columns.splice(columns.indexOf('extras'), 1);
-              }
-              res.write(columns.join(",") + '\n');
-            }
-            startedResponse = true;
-          }
-          else {
-            if (step === OUTPUT_JSON_STEP) {
-              res.write(',\n');
-            }
-          }
-          if (step === OUTPUT_JSON_STEP) {
-            res.write(JSON.stringify(row));
-          }
-          else if (step === OUTPUT_CSV_STEP) {
-            const csvRow = {
-              fields: columns,
-              data: []
-            };
-            columns.forEach((column) => {
-              let value = "";
-              if (row.hasOwnProperty(column)) {
-                const stringify = objectColumns.indexOf(column) !== -1;
-                value = stringify ? JSON.stringify(row[column]) : row[column];
-              }
-              else if (explode) {
-                objectColumns.forEach((explodedColumn) => {
-                  if ((row[explodedColumn] || {}).hasOwnProperty(column)) {
-                    value = row[explodedColumn][column];
-                  }
-                });
-              }
-              csvRow.data.push(value);
-            });
-            res.write(papaparse.unparse(csvRow, {header: false}) + '\n');
-          }
+            csvRow.data.push(value);
+          });
+          res.write(papaparse.unparse(csvRow, {header: false}) + '\n');
         }
       })
       .on('end', () => {
-        if (step === GET_EXPLODED_COLUMNS_STEP) {
-          processQuery(OUTPUT_CSV_STEP);
-        }
-        else {
-          done();
-          if (step === OUTPUT_JSON_STEP) {
-            if (!startedResponse) {
-              res.write('[\n');
-            }
-            res.write('\n]\n');
+        done();
+        if (step === OUTPUT_JSON_STEP) {
+          if (!startedResponse) {
+            res.write('[\n');
           }
-          res.end();
+          res.write('\n]\n');
         }
+        res.end();
       });
     };
-    processQuery(isCSV ? (explode ? GET_EXPLODED_COLUMNS_STEP : OUTPUT_CSV_STEP) : OUTPUT_JSON_STEP);
+    processQuery(isCSV ? OUTPUT_CSV_STEP : OUTPUT_JSON_STEP);
   });
 };
 

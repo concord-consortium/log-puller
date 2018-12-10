@@ -276,24 +276,9 @@ describe('/portal-report', () => {
   test('csv form without explode POST should succeed', () => {
     const json = `
     {
-      "filter": [
-          {
-              "key": "run_remote_endpoint",
-              "list": [
-                  "https://example.com/1"
-              ],
-              "remove": false,
-              "filter_type": "string"
-          }
-      ],
-      "filter_having_keys": {
-          "keys_list": []
-      },
-      "measures": [],
-      "child_query": {
-          "filter": [],
-          "add_child_data": true
-      }
+      "run_remote_endpoints": [
+        "https://example.com/1"
+      ]
     }
     `;
     mockDB({
@@ -312,37 +297,67 @@ describe('/portal-report', () => {
   test('csv form with explode POST should succeed', () => {
     const json = `
     {
-      "filter": [
-          {
-              "key": "run_remote_endpoint",
-              "list": [
-                  "https://example.com/1"
-              ],
-              "remove": false,
-              "filter_type": "string"
-          }
-      ],
-      "filter_having_keys": {
-          "keys_list": []
-      },
-      "measures": [],
-      "child_query": {
-          "filter": [],
-          "add_child_data": true
-      }
+      "run_remote_endpoints": [
+        "https://example.com/1"
+      ]
     }
     `;
     mockDB({
-      rows: [
-        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
-        {id: 2, event: 'test 2'},
+      queries: [
+        {
+          rows: [
+            {key: "foo"},
+            {key: "baz"},
+            {key: "biff"}
+          ]
+        },
+        {
+          rows: [
+            {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
+            {id: 2, event: 'test 2'},
+          ]
+        }
       ]
     });
     return request(app)
       .post('/portal-report')
       .send({download: true, json: json, signature: sign(json), format: 'csv', explode: 'yes'})
       .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.csv/)
-      .expect(200, 'id,session,username,application,activity,event,time,event_value,foo,baz,biff\n1,,,,,test 1,,,bar,bam,true\n2,,,,,test 2,,,,,\n');
+      .expect(200, 'id,session,username,application,activity,event,time,event_value,baz,biff,foo\n1,,,,,test 1,,,bam,true,bar\n2,,,,,test 2,,,,,\n');
+  });
+
+  test('csv form with explode and allColumns POST should succeed', () => {
+    const json = `
+    {
+      "run_remote_endpoints": [
+        "https://example.com/1"
+      ]
+    }
+    `;
+    mockDB({
+      queries: [
+        {
+          rows: [
+            {key: "foo"},
+            {key: "baz"},
+            {key: "biff"},
+            {key: "paramFromAnotherEvent"},
+            {key: "extraFromAnotherEvent"},
+          ]
+        },
+        {
+          rows: [
+            {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
+            {id: 2, event: 'test 2'},
+          ]
+        }
+      ]
+    });
+    return request(app)
+      .post('/portal-report')
+      .send({download: true, json: json, signature: sign(json), format: 'csv', explode: 'yes', allColumns: 'yes'})
+      .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.csv/)
+      .expect(200, 'id,session,username,application,activity,event,time,event_value,baz,biff,extraFromAnotherEvent,foo,paramFromAnotherEvent\n1,,,,,test 1,,,bam,true,,bar,\n2,,,,,test 2,,,,,,,\n');
   });
 
 });
