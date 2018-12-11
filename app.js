@@ -236,52 +236,58 @@ const query = (req, res, download) => {
   });
 };
 
-const outputPortalReport = (req, res) => {
-  const isCSV = req.body.format === "csv";
-  const explode = req.body.explode === "yes";
-  const allColumns = req.body.allColumns === "yes";
-
+const getEndpoints = (req) => {
   if (!process.env.JWT_HMAC_SECRET) {
-    return res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate json signature', 500);
+    return { error: 'Missing JWT_HMAC_SECRET environment variable (needed to validate json signature)' };
   }
 
   let json = req.body.json;
   if (!json) {
-    return res.error('Missing json body parameter', 400);
+    return { error: 'Missing json body parameter' };
   }
   const signature = req.body.signature;
   if (!signature) {
-    return res.error('Missing signature body parameter', 400);
+    return { error: 'Missing signature body parameter' };
   }
   const hmac = crypto.createHmac('sha256', process.env.JWT_HMAC_SECRET);
   hmac.update(json);
   const signatureBuffer = new Buffer(signature);
   const digestBuffer = new Buffer(hmac.digest('hex'));
   if ((signatureBuffer.length !== digestBuffer.length) || !crypto.timingSafeEqual(signatureBuffer, digestBuffer)) {
-    return res.error('Invalid signature for json parameter', 400);
+    return { error: 'Invalid signature for json parameter' };
   }
 
   try {
     json = JSON.parse(json);
-  }
-  catch (e) {
-    return res.error('Unable to parse json parameter', 500);
+  } catch (e) {
+    return { error: 'Unable to parse json parameter' };
   }
 
-  let endpointValues = [];
-  let endpointMarkers = [];
+  let result = {};
   try {
-    const result = parseQuery(json)
-    endpointValues = result.endpointValues;
-    endpointMarkers = result.endpointMarkers;
+    result = parseQuery(json);
+  } catch (e) {
+    return { error: e.message };
   }
-  catch (e) {
-    return res.error(e.message, 400)
+  const endpointValues = result.endpointValues;
+  const endpointMarkers = result.endpointMarkers;
+
+  if (!endpointValues || endpointValues.length === 0) {
+    return { error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter' };
   }
 
-  if (endpointValues.length === 0) {
-    return res.error('Invalid query, no valid run_remote_endpoint filters found in json parameter', 400);
+  return { error: null, endpointValues, endpointMarkers };
+};
+
+const outputPortalReport = (req, res) => {
+  const { error, endpointValues, endpointMarkers } = getEndpoints(req);
+  if (error) {
+    return res.error(error, 400);
   }
+
+  const isCSV = req.body.format === "csv";
+  const explode = req.body.explode === "yes";
+  const allColumns = req.body.allColumns === "yes";
 
   res.type(isCSV ? 'csv' : 'json');
   res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
@@ -394,6 +400,25 @@ const outputPortalReport = (req, res) => {
   });
 };
 
+const outputLogsCount = (req, res) => {
+  const { error, endpointValues, endpointMarkers } = getEndpoints(req);
+  if (error) {
+    return res.error(error, 400);
+  }
+
+  res.setHeader('Content-Type', 'application/json');
+
+  req.db(async (client, done) => {
+    try {
+      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`, endpointValues)
+      res.success(response.rows[0].count);
+    } catch (e) {
+      res.error(e.message, 500);
+    }
+    done();
+  });
+};
+
 app.get('/', (req, res) => {
   const params = {
     portal_token: 'PORTAL-GENERATED-TOKEN'
@@ -440,13 +465,20 @@ app.get('/portal-report', (req, res) => {
   renderPortalReportForm(req, res, req.query);
 });
 
+app.post('/logs-count', (req, res) => {
+  renderPortalReportForm(req, res, req.query);
+});
+
 app.get('/portal-report-tester', (req, res) => {
   res.type('html');
   res.render('portal-report-tester', req.query);
 });
 
 app.post('/portal-report', (req, res) => {
-  if (req.body.download) {
+  if (req.body.count) {
+    outputLogsCount(req, res);
+  }
+  else if (req.body.download) {
     outputPortalReport(req, res);
   }
   else {
