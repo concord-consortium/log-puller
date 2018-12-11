@@ -190,7 +190,7 @@ describe('/portal-report', () => {
     return request(app)
       .post('/portal-report')
       .send({download: true, json: "invalid", signature: sign("invalid")})
-      .expect(500)
+      .expect(400)
       .expect({success: false, error: 'Unable to parse json parameter'});
   });
 

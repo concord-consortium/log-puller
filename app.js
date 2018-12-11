@@ -236,65 +236,58 @@ const query = (req, res, download) => {
   });
 };
 
-const validatePortalReportQueryJSON = (req, res) => {
+const getEndpoints = (req) => {
   if (!process.env.JWT_HMAC_SECRET) {
-    res.error('Missing JWT_HMAC_SECRET environment variable (needed to validate json signature', 500);
-    return false;
+    return { error: 'Missing JWT_HMAC_SECRET environment variable (needed to validate json signature)' };
   }
 
   let json = req.body.json;
   if (!json) {
-    res.error('Missing json body parameter', 400);
-    return false;
+    return { error: 'Missing json body parameter' };
   }
   const signature = req.body.signature;
   if (!signature) {
-    res.error('Missing signature body parameter', 400);
-    return false;
+    return { error: 'Missing signature body parameter' };
   }
   const hmac = crypto.createHmac('sha256', process.env.JWT_HMAC_SECRET);
   hmac.update(json);
   const signatureBuffer = new Buffer(signature);
   const digestBuffer = new Buffer(hmac.digest('hex'));
   if ((signatureBuffer.length !== digestBuffer.length) || !crypto.timingSafeEqual(signatureBuffer, digestBuffer)) {
-    res.error('Invalid signature for json parameter', 400);
-    return false;
+    return { error: 'Invalid signature for json parameter' };
   }
 
   try {
     json = JSON.parse(json);
   } catch (e) {
-    res.error('Unable to parse json parameter', 500);
-    return false;
+    return { error: 'Unable to parse json parameter' };
   }
-  return json;
+
+  let result = {};
+  try {
+    result = parseQuery(json);
+  } catch (e) {
+    return { error: e.message };
+  }
+  const endpointValues = result.endpointValues;
+  const endpointMarkers = result.endpointMarkers;
+
+  if (!endpointValues || endpointValues.length === 0) {
+    return { error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter' };
+  }
+
+  return { error: null, endpointValues, endpointMarkers };
 };
 
 const outputPortalReport = (req, res) => {
-  const json = validatePortalReportQueryJSON(req, res);
-  if (!json) {
-    // Error.
-    return;
+  const { error, endpointValues, endpointMarkers } = getEndpoints(req);
+  if (error) {
+    return res.error(error, 400);
   }
 
   const isCSV = req.body.format === "csv";
   const explode = req.body.explode === "yes";
   const allColumns = req.body.allColumns === "yes";
-
-  let endpointValues = [];
-  let endpointMarkers = [];
-  try {
-    const result = parseQuery(json)
-    endpointValues = result.endpointValues;
-    endpointMarkers = result.endpointMarkers;
-  }
-  catch (e) {
-    return res.error(e.message, 400)
-  }
-
-  if (endpointValues.length === 0) {
-    return res.error('Invalid query, no valid run_remote_endpoint filters found in json parameter', 400);
-  }
 
   res.type(isCSV ? 'csv' : 'json');
   res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
@@ -408,25 +401,9 @@ const outputPortalReport = (req, res) => {
 };
 
 const outputLogsCount = (req, res) => {
-  const json = validatePortalReportQueryJSON(req, res);
-  if (!json) {
-    // Error.
-    return;
-  }
-
-  let endpointValues = [];
-  let endpointMarkers = [];
-  try {
-    const result = parseQuery(json)
-    endpointValues = result.endpointValues;
-    endpointMarkers = result.endpointMarkers;
-  }
-  catch (e) {
-    return res.error(e.message, 400)
-  }
-
-  if (endpointValues.length === 0) {
-    return res.error('Invalid query, no valid run_remote_endpoint filters found in json parameter', 400);
+  const { error, endpointValues, endpointMarkers } = getEndpoints(req);
+  if (error) {
+    return res.error(error, 400);
   }
 
   res.setHeader('Content-Type', 'application/json');
