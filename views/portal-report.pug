@@ -2,6 +2,8 @@ html
   head
     title Concord Log Puller
     include portal-report-style.pug
+    link(rel='stylesheet', href='https://use.fontawesome.com/releases/v5.5.0/css/solid.css', integrity='sha384-rdyFrfAIC05c5ph7BKz3l5NG5yEottvO/DQ0dCrwD8gzeQDjYBHNr1ucUpQuljos', crossorigin='anonymous')
+    link(rel='stylesheet', href='https://use.fontawesome.com/releases/v5.5.0/css/fontawesome.css', integrity='sha384-u5J7JghGz0qUrmEsWzBQkfvc8nK3fUT7DCaQzNQ+q4oEXhGSx+P2OqjWsfIRB8QT', crossorigin='anonymous')
   body
     .header Concord Log Puller
     .workspace
@@ -38,5 +40,11 @@ html
           | No
           input(type='radio', name='allColumns', value='yes')
           | Yes
+        p#count-btn-container
+          input(type='submit', name='count', value='Count Logs')
         p
           input(type='submit', name='download', value='Download Logs')
+
+        script(src='https://code.jquery.com/jquery-3.3.1.min.js', integrity='sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=', crossorigin='anonymous')
+        script
+          include count-button.js

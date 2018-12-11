@@ -360,6 +360,26 @@ describe('/portal-report', () => {
       .expect(200, 'id,session,username,application,activity,event,time,event_value,baz,biff,extraFromAnotherEvent,foo,paramFromAnotherEvent\n1,,,,,test 1,,,bam,true,,bar,\n2,,,,,test 2,,,,,,,\n');
   });
 
+  test('count request should succeed', () => {
+    const json = `
+    {
+      "run_remote_endpoints": [
+        "https://example.com/1"
+      ]
+    }
+    `;
+    mockDB({
+      rows: [
+        {count: 123},
+      ]
+    });
+    return request(app)
+      .post('/portal-report')
+      .send({count: true, json: json, signature: sign(json)})
+      .expect('Content-type', /application\/json/)
+      .expect(200, {success: true, result: 123});
+  });
+
 });
 
 describe('/portal-report-tester', () => {
