@@ -194,12 +194,13 @@ const query = (req, res, download) => {
       const exclude = (req.query.exclude || "").split(",");
       const paramValues = ['activity: ' + activityId].concat(endPoints);
       const endpointMarkers = endPoints.map((endPoint, i) => '$' + (i+2)); // +2 because activity name is $1
+      const markers = endpointMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
       let startedResponse = false;
 
       columns = columns.filter((column) => exclude.indexOf(column) === -1).join(", ");
 
       client
-        .query("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND run_remote_endpoint in (" + endpointMarkers + ')', paramValues)
+        .query("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND (" + markers + ')', paramValues)
         .on('error', (err) => {
           done();
           res.error(err.toString(), 500);
@@ -297,18 +298,19 @@ const outputPortalReport = (req, res) => {
     const baseColumns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
     const columns = baseColumns.slice();
     const objectColumns = ['parameters', 'extras'];
+    const markers = endpointMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
 
     let additionalColumns = [];
-    if (explode && !allColumns) {
-      const query = `WITH base_ids as (SELECT id FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')}))` +
+    if (isCSV && explode && !allColumns) {
+      const query = `WITH base_ids as (SELECT id FROM logs WHERE ${markers})` +
                     `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM base_ids) ` +
                     `UNION ` +
                     `SELECT DISTINCT (each(extras)).key FROM logs WHERE id IN (SELECT id FROM base_ids)`;
       const result = await client.query(query, endpointValues);
       additionalColumns = additionalColumns.concat(result.rows.map(row => row.key));
     }
-    if (explode && allColumns) {
-      const query = `WITH base_ids as (SELECT id FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})), ` +
+    if (isCSV && explode && allColumns) {
+      const query = `WITH base_ids as (SELECT id FROM logs WHERE ${markers}), ` +
                     `     related_ids as (SELECT id FROM logs WHERE application IN (SELECT DISTINCT application FROM logs WHERE id in (SELECT id FROM base_ids)) AND ` +
                     `                                               activity IN (SELECT DISTINCT activity FROM logs WHERE id in (SELECT id FROM base_ids))) ` +
                     `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM related_ids) ` +
@@ -324,7 +326,7 @@ const outputPortalReport = (req, res) => {
       }
     });
 
-    const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`;
+    const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${markers}`;
     const processQuery = (step) => {
       client
       .query(sql, endpointValues)
@@ -410,7 +412,8 @@ const outputLogsCount = (req, res) => {
 
   req.db(async (client, done) => {
     try {
-      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`, endpointValues)
+      const markers = endpointMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
+      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE ${markers}`, endpointValues)
       res.success(response.rows[0].count);
     } catch (e) {
       res.error(e.message, 500);
