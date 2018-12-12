@@ -1,7 +1,7 @@
 (function () {
   var form = $('form');
   var container = $('#count-btn-container');
-  var spinner = $('<div>Plaase wait <i class="fas fa-spinner fa-pulse"></i></div>');
+  var spinner = $('<div>Please wait <i class="fas fa-spinner fa-pulse"></i></div>');
   var result = $('<b>');
   var countBtn = $('input[name="count"]');
 
