@@ -101,6 +101,22 @@ Now open your browser to http://localhost:5000/portal-report-tester.
 If you're using Dinghy HTTP Proxy (https://github.com/concord-consortium/rigse/blob/master/docs/docker.md#setting-up-a-dns-and-proxy-to-avoid-port-conflicts), 
 you can also go to http://app.log-puller.docker/portal-report-tester.  
 
+## Large query testing
+
+When SQL is changed in a significant way, it might be worth checking if large queries still work fine.
+Large query examples might depend on the production data. You can connect your local server to it using Postgres 
+connection string - open Heroku console and look for `DATABASE_URL` environment variable. 
+Then, set it locally using `.env` file.
+
+To test one of the queries, go to:
+
+http://localhost:5000/portal-report
+
+and paste it there.
+
+You also need a valid HMAC Signature. There are online tools that let you generate it (e.g. https://www.freeformatter.com/hmac-generator.html).
+Make sure that you use a correct secret key and SHA256 algorithm. Check your `JWT_HMAC_SECRET` env variable, which can 
+be defined either in `docker-compose.yml` or your `.env` file.
 
 ## License
 
