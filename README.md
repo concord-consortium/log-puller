@@ -104,8 +104,7 @@ you can also go to http://app.log-puller.docker/portal-report-tester.
 ## Large query testing
 
 When SQL is changed in a significant way, it might be worth checking if large queries still work fine.
-There are some large queries in this repository - take a look at `test-queries` dir. They all depend on production
-logs data, so you need an access to the production database. You can connect your local server to it using Postgres 
+Large query examples might depend on the production data. You can connect your local server to it using Postgres 
 connection string - open Heroku console and look for `DATABASE_URL` environment variable. 
 Then, set it locally using `.env` file.
 
