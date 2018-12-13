@@ -194,12 +194,13 @@ const query = (req, res, download) => {
       const exclude = (req.query.exclude || "").split(",");
       const paramValues = ['activity: ' + activityId].concat(endPoints);
       const endpointMarkers = endPoints.map((endPoint, i) => '$' + (i+2)); // +2 because activity name is $1
+      const markers = endpointMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
       let startedResponse = false;
 
       columns = columns.filter((column) => exclude.indexOf(column) === -1).join(", ");
 
       client
-        .query("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND run_remote_endpoint in (" + endpointMarkers + ')', paramValues)
+        .query("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND (" + markers + ')', paramValues)
         .on('error', (err) => {
           done();
           res.error(err.toString(), 500);
@@ -270,7 +271,7 @@ const getEndpoints = (req) => {
     return { error: e.message };
   }
   const endpointValues = result.endpointValues;
-  const endpointMarkers = result.endpointMarkers;
+  const endpointMarkers = result.endpointMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
 
   if (!endpointValues || endpointValues.length === 0) {
     return { error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter' };
@@ -280,14 +281,19 @@ const getEndpoints = (req) => {
 };
 
 const outputPortalReport = (req, res) => {
+  const requestId = new Date().getTime();
+  console.log(`outputPortalReport - request ${requestId}`);
+  console.log(req.body);
+
   const { error, endpointValues, endpointMarkers } = getEndpoints(req);
   if (error) {
     return res.error(error, 400);
   }
 
+  console.log(`processing ${endpointValues.length} endpoints`);
+
   const isCSV = req.body.format === "csv";
   const explode = req.body.explode === "yes";
-  const allColumns = req.body.allColumns === "yes";
 
   res.type(isCSV ? 'csv' : 'json');
   res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
@@ -298,36 +304,31 @@ const outputPortalReport = (req, res) => {
     const columns = baseColumns.slice();
     const objectColumns = ['parameters', 'extras'];
 
-    let additionalColumns = [];
-    if (explode && !allColumns) {
-      const query = `WITH base_ids as (SELECT id FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')}))` +
+    if (isCSV && explode) {
+      console.time('explode');
+      const query = `WITH base_ids as (SELECT id FROM logs WHERE ${endpointMarkers})` +
                     `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM base_ids) ` +
                     `UNION ` +
                     `SELECT DISTINCT (each(extras)).key FROM logs WHERE id IN (SELECT id FROM base_ids)`;
-      const result = await client.query(query, endpointValues);
-      additionalColumns = additionalColumns.concat(result.rows.map(row => row.key));
-    }
-    if (explode && allColumns) {
-      const query = `WITH base_ids as (SELECT id FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})), ` +
-                    `     related_ids as (SELECT id FROM logs WHERE application IN (SELECT DISTINCT application FROM logs WHERE id in (SELECT id FROM base_ids)) AND ` +
-                    `                                               activity IN (SELECT DISTINCT activity FROM logs WHERE id in (SELECT id FROM base_ids))) ` +
-                    `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM related_ids) ` +
-                    `UNION ` +
-                    `SELECT DISTINCT (each(extras)).key FROM logs WHERE id IN (SELECT id FROM related_ids)`;
-      const result = await client.query(query, endpointValues);
-      additionalColumns = additionalColumns.concat(result.rows.map(row => row.key));
-    }
 
-    additionalColumns.sort().forEach(newCol => {
-      if (columns.indexOf(newCol) === -1) {
-        columns.push(newCol);
+      try {
+        const result = await client.query(query, endpointValues);
+        const additionalColumns = result.rows.map(row => row.key);
+        additionalColumns.sort().forEach(newCol => {
+          if (columns.indexOf(newCol) === -1) {
+            columns.push(newCol);
+          }
+        });
+      } catch (error) {
+        done();
+        return res.error(err.message, 500);
       }
-    });
+      console.timeEnd('explode');
+    }
 
-    const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`;
     const processQuery = (step) => {
       client
-      .query(sql, endpointValues)
+      .query(`SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers}`, endpointValues)
       .on('error', (err) => {
         done();
         res.error(err.toString(), 500);
@@ -394,6 +395,7 @@ const outputPortalReport = (req, res) => {
           res.write('\n]\n');
         }
         res.end();
+        console.log(`request ${requestId} done`);
       });
     };
     processQuery(isCSV ? OUTPUT_CSV_STEP : OUTPUT_JSON_STEP);
@@ -401,17 +403,25 @@ const outputPortalReport = (req, res) => {
 };
 
 const outputLogsCount = (req, res) => {
+  const requestId = new Date().getTime();
+  console.log(`outputLogsCount - request ${requestId}`);
+  console.log(req.body);
+
   const { error, endpointValues, endpointMarkers } = getEndpoints(req);
   if (error) {
     return res.error(error, 400);
   }
 
+  console.log(`processing ${endpointValues.length} endpoints`);
+  console.log(endpointMarkers);
+
   res.setHeader('Content-Type', 'application/json');
 
   req.db(async (client, done) => {
     try {
-      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE run_remote_endpoint IN (${endpointMarkers.join(', ')})`, endpointValues)
+      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE ${endpointMarkers}`, endpointValues)
       res.success(response.rows[0].count);
+      console.log(`request ${requestId} done`);
     } catch (e) {
       res.error(e.message, 500);
     }
