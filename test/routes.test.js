@@ -199,7 +199,7 @@ describe('/portal-report', () => {
       .post('/portal-report')
       .send({download: true, json: "{}", signature: sign("{}")})
       .expect(400)
-      .expect({success: false, error: 'Unsupported query format - missing filter/run_remote_endpoints section in json parameter'});
+      .expect({success: false, error: 'Unsupported query format - missing filter/learners section in json parameter'});
   });
 
   test('form POST with an json parameter without run_remote_endpoints should fail', () => {
@@ -235,8 +235,8 @@ describe('/portal-report', () => {
     `;
     mockDB({
       rows: [
-        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
-        {id: 2, event: 'test 2'},
+        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"', run_remote_endpoint: "https://example.com/1"},
+        {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
       ]
     });
     return request(app)
@@ -244,23 +244,23 @@ describe('/portal-report', () => {
       .send({download: true, json: json, signature: sign(json)})
       .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.json/)
       .expect([
-        {id: 1, event: 'test 1', parameters: {foo: 'bar', baz: 'bam'}, extras: {biff: 'true'}},
-        {id: 2, event: 'test 2'},
+        {id: 1, event: 'test 1', parameters: {foo: 'bar', baz: 'bam'}, extras: {biff: 'true'}, run_remote_endpoint: "https://example.com/1"},
+        {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
       ]);
   });
 
-  test('Simple query json form POST should succeed', () => {
+  test('simple query json form POST should succeed', () => {
     const json = `
     {
-      "run_remote_endpoints": [
-        "https://example.com/1"
+      "learners": [
+        {"run_remote_endpoint": "https://example.com/1"}
       ]
     }
     `;
     mockDB({
       rows: [
-        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
-        {id: 2, event: 'test 2'},
+        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"', run_remote_endpoint: "https://example.com/1"},
+        {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
       ]
     });
     return request(app)
@@ -268,37 +268,37 @@ describe('/portal-report', () => {
       .send({download: true, json: json, signature: sign(json)})
       .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.json/)
       .expect([
-        {id: 1, event: 'test 1', parameters: {foo: 'bar', baz: 'bam'}, extras: {biff: 'true'}},
-        {id: 2, event: 'test 2'},
+        {id: 1, event: 'test 1', parameters: {foo: 'bar', baz: 'bam'}, extras: {biff: 'true'}, run_remote_endpoint: "https://example.com/1"},
+        {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
       ]);
   });
 
   test('csv form without explode POST should succeed', () => {
     const json = `
-    {
-      "run_remote_endpoints": [
-        "https://example.com/1"
+     {
+      "learners": [
+        {"run_remote_endpoint": "https://example.com/1"}
       ]
     }
     `;
     mockDB({
       rows: [
-        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
-        {id: 2, event: 'test 2'},
+        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"', run_remote_endpoint: "https://example.com/1"},
+        {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
       ]
     });
     return request(app)
       .post('/portal-report')
       .send({download: true, json: json, signature: sign(json), format: 'csv'})
       .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.csv/)
-      .expect(200, 'id,session,username,application,activity,event,time,parameters,extras,event_value\n1,,,,,test 1,,"{""foo"":""bar"",""baz"":""bam""}","{""biff"":""true""}",\n2,,,,,test 2,,,,\n');
+      .expect(200, 'id,session,username,application,activity,event,time,parameters,extras,event_value,run_remote_endpoint\n1,,,,,test 1,,"{""foo"":""bar"",""baz"":""bam""}","{""biff"":""true""}",,https://example.com/1\n2,,,,,test 2,,,,,https://example.com/1\n');
   });
 
   test('csv form with explode POST should succeed', () => {
     const json = `
     {
-      "run_remote_endpoints": [
-        "https://example.com/1"
+      "learners": [
+        {"run_remote_endpoint": "https://example.com/1"}
       ]
     }
     `;
@@ -313,8 +313,8 @@ describe('/portal-report', () => {
         },
         {
           rows: [
-            {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
-            {id: 2, event: 'test 2'},
+            {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"', run_remote_endpoint: "https://example.com/1"},
+            {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
           ]
         }
       ]
@@ -323,14 +323,14 @@ describe('/portal-report', () => {
       .post('/portal-report')
       .send({download: true, json: json, signature: sign(json), format: 'csv', explode: 'yes'})
       .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.csv/)
-      .expect(200, 'id,session,username,application,activity,event,time,event_value,baz,biff,foo\n1,,,,,test 1,,,bam,true,bar\n2,,,,,test 2,,,,,\n');
+      .expect(200, 'id,session,username,application,activity,event,time,event_value,run_remote_endpoint,baz,biff,foo\n1,,,,,test 1,,,https://example.com/1,bam,true,bar\n2,,,,,test 2,,,https://example.com/1,,,\n');
   });
 
   test('csv form with explode and allColumns POST should succeed', () => {
     const json = `
     {
-      "run_remote_endpoints": [
-        "https://example.com/1"
+      "learners": [
+        {"run_remote_endpoint": "https://example.com/1"}
       ]
     }
     `;
@@ -347,8 +347,8 @@ describe('/portal-report', () => {
         },
         {
           rows: [
-            {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"'},
-            {id: 2, event: 'test 2'},
+            {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"', run_remote_endpoint: "https://example.com/1"},
+            {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
           ]
         }
       ]
@@ -357,14 +357,41 @@ describe('/portal-report', () => {
       .post('/portal-report')
       .send({download: true, json: json, signature: sign(json), format: 'csv', explode: 'yes', allColumns: 'yes'})
       .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.csv/)
-      .expect(200, 'id,session,username,application,activity,event,time,event_value,baz,biff,extraFromAnotherEvent,foo,paramFromAnotherEvent\n1,,,,,test 1,,,bam,true,,bar,\n2,,,,,test 2,,,,,,,\n');
+      .expect(200, 'id,session,username,application,activity,event,time,event_value,run_remote_endpoint,baz,biff,extraFromAnotherEvent,foo,paramFromAnotherEvent\n1,,,,,test 1,,,https://example.com/1,bam,true,,bar,\n2,,,,,test 2,,,https://example.com/1,,,,,\n');
+  });
+
+  test('class_id should be added to logs if it is provided in query JSON', () => {
+    const json = `
+    {
+      "learners": [
+        {
+          "run_remote_endpoint": "https://example.com/1",
+          "class_id": 123
+        }
+      ]
+    }
+    `;
+    mockDB({
+      rows: [
+        {id: 1, event: 'test 1', parameters: '"foo"=>"bar","baz"=>"bam"', extras: '"biff"=>"true"', run_remote_endpoint: "https://example.com/1"},
+        {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1"},
+      ]
+    });
+    return request(app)
+      .post('/portal-report')
+      .send({download: true, json: json, signature: sign(json)})
+      .expect('Content-disposition', /attachment; filename="portal-report-(\d+)\.json/)
+      .expect([
+        {id: 1, event: 'test 1', parameters: {foo: 'bar', baz: 'bam'}, extras: {biff: 'true'}, run_remote_endpoint: "https://example.com/1", class_id: 123},
+        {id: 2, event: 'test 2', run_remote_endpoint: "https://example.com/1", class_id: 123},
+      ]);
   });
 
   test('count request should succeed', () => {
     const json = `
     {
-      "run_remote_endpoints": [
-        "https://example.com/1"
+      "learners": [
+        {"run_remote_endpoint": "https://example.com/1"}
       ]
     }
     `;

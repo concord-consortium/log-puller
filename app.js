@@ -19,6 +19,9 @@ pg.defaults.ssl = process.env.PG_SSL !== 'false';
 const OUTPUT_JSON_STEP = "output-json";
 const OUTPUT_CSV_STEP = "output-csv";
 const DB_BATCH_SIZE = 5000;
+// Portal is passing additional data for each learner that cannot be found directly in log data.
+// This list defines which properties are included.
+const ADDITIONAL_LOG_COLUMNS = ["class_id"];
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -260,20 +263,22 @@ const getEndpoints = (req) => {
     return { error: 'Unable to parse json parameter' };
   }
 
-  let result = {};
+  let learners = [];
   try {
-    result = parseQuery(json);
+    learners = parseQuery(json);
   } catch (e) {
     return { error: e.message };
   }
-  const endpointValues = result.endpointValues;
-  const endpointMarkers = result.endpointMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
+  const endpointValues = learners.map(l => l.run_remote_endpoint)
+  const endpointMarkers = learners.map((l, idx) => `(run_remote_endpoint = $${idx + 1})`).join(' or ');
+  const endpointInfo = {}
+  learners.forEach(l => endpointInfo[l.run_remote_endpoint] = l);
 
   if (!endpointValues || endpointValues.length === 0) {
     return { error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter' };
   }
 
-  return { error: null, endpointValues, endpointMarkers };
+  return { error: null, endpointValues, endpointMarkers, endpointInfo };
 };
 
 const outputPortalReport = (req, res) => {
@@ -281,7 +286,7 @@ const outputPortalReport = (req, res) => {
   console.log(`outputPortalReport - request ${requestId}`);
   console.log(req.body);
 
-  const { error, endpointValues, endpointMarkers } = getEndpoints(req);
+  const { error, endpointInfo, endpointValues, endpointMarkers } = getEndpoints(req);
   if (error) {
     return res.error(error, 400);
   }
@@ -296,7 +301,7 @@ const outputPortalReport = (req, res) => {
 
   req.db(async (client, done) => {
     let startedResponse = false;
-    const baseColumns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value'];
+    const baseColumns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value', 'run_remote_endpoint'];
     const columns = baseColumns.slice();
     const objectColumns = ['parameters', 'extras'];
 
@@ -331,12 +336,19 @@ const outputPortalReport = (req, res) => {
           res.error(err.toString(), 500);
         })
         .on('data', row => {
-          objectColumns.forEach((column) => {
+          // Parse hstore columns and extend row object.
+          objectColumns.forEach(column => {
             if (row.hasOwnProperty(column)) {
               hstore.parse(row[column], (result) => {
                 row[column] = result;
               });
             }
+          });
+          // Extend log entry with additional properties passed directly from Portal.
+          ADDITIONAL_LOG_COLUMNS.forEach(column => {
+            // Note that if value is not provided by Portal, it will be equal to `undefined` and JSON.stringify
+            // won't serialize it.
+            row[column] = endpointInfo[row.run_remote_endpoint][column];
           });
           if (!startedResponse) {
             if (step === OUTPUT_JSON_STEP) {
