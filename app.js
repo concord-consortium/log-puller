@@ -1,10 +1,8 @@
-const OUTPUT_JSON_STEP = "output-json";
-const OUTPUT_CSV_STEP = "output-csv";
-
 const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 const pg = require('pg');
+const QueryStream = require('pg-query-stream');
 const url = require('url');
 const superagent = require('superagent');
 const jwt = require('jsonwebtoken');
@@ -18,15 +16,12 @@ const parseQuery = require('./parse-query');
 
 pg.defaults.ssl = process.env.PG_SSL !== 'false';
 
-const dbParams = url.parse(process.env.DATABASE_URL);
-const auth = dbParams.auth.split(':');
+const OUTPUT_JSON_STEP = "output-json";
+const OUTPUT_CSV_STEP = "output-csv";
+const DB_BATCH_SIZE = 5000;
 
 const pool = new pg.Pool({
-  user: auth[0],
-  password: auth[1],
-  host: dbParams.hostname,
-  port: dbParams.port,
-  database: dbParams.pathname.split('/')[1],
+  connectionString: process.env.DATABASE_URL,
   ssl: pg.defaults.ssl
 });
 
@@ -59,9 +54,9 @@ class MockDBClient {
   runEvents() {
     // copy the rows so requeries use original values
     const rows = _.cloneDeep(this.options.rows || []);
-    if (this.eventCallbacks.row) {
+    if (this.eventCallbacks.data) {
       rows.forEach((row) => {
-        this.eventCallbacks.row(row);
+        this.eventCallbacks.data(row);
       });
     }
     if (this.eventCallbacks.end) {
@@ -199,13 +194,14 @@ const query = (req, res, download) => {
 
       columns = columns.filter((column) => exclude.indexOf(column) === -1).join(", ");
 
+      const query = new QueryStream("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND (" + markers + ')', paramValues, {batchSize: DB_BATCH_SIZE});
       client
-        .query("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND (" + markers + ')', paramValues)
+        .query(query)
         .on('error', (err) => {
           done();
           res.error(err.toString(), 500);
         })
-        .on('row', (row) => {
+        .on('data', (row) => {
           ["parameters", "extras"].forEach((column) => {
             if (row.hasOwnProperty(column)) {
               hstore.parse(row[column], (result) => {
@@ -327,76 +323,78 @@ const outputPortalReport = (req, res) => {
     }
 
     const processQuery = (step) => {
+      const query = new QueryStream(`SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers}`, endpointValues, {batchSize: DB_BATCH_SIZE});
       client
-      .query(`SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers}`, endpointValues)
-      .on('error', (err) => {
-        done();
-        res.error(err.toString(), 500);
-      })
-      .on('row', (row) => {
-        objectColumns.forEach((column) => {
-          if (row.hasOwnProperty(column)) {
-            hstore.parse(row[column], (result) => {
-              row[column] = result;
-            });
-          }
-        });
-        if (!startedResponse) {
-          if (step === OUTPUT_JSON_STEP) {
-            res.write('[\n');
-          }
-          else if (step === OUTPUT_CSV_STEP) {
-            if (explode) {
-              // remove parameters and extras since they have been exploded into the columns
-              columns.splice(columns.indexOf('parameters'), 1);
-              columns.splice(columns.indexOf('extras'), 1);
-            }
-            res.write(columns.join(",") + '\n');
-          }
-          startedResponse = true;
-        }
-        else {
-          if (step === OUTPUT_JSON_STEP) {
-            res.write(',\n');
-          }
-        }
-        if (step === OUTPUT_JSON_STEP) {
-          res.write(JSON.stringify(row));
-        }
-        else if (step === OUTPUT_CSV_STEP) {
-          const csvRow = {
-            fields: columns,
-            data: []
-          };
-          columns.forEach((column) => {
-            let value = "";
+        .query(query)
+        .on('error', (err) => {
+          done();
+          res.error(err.toString(), 500);
+        })
+        .on('data', row => {
+          objectColumns.forEach((column) => {
             if (row.hasOwnProperty(column)) {
-              const stringify = objectColumns.indexOf(column) !== -1;
-              value = stringify ? JSON.stringify(row[column]) : row[column];
-            }
-            else if (explode) {
-              objectColumns.forEach((explodedColumn) => {
-                if ((row[explodedColumn] || {}).hasOwnProperty(column)) {
-                  value = row[explodedColumn][column];
-                }
+              hstore.parse(row[column], (result) => {
+                row[column] = result;
               });
             }
-            csvRow.data.push(value);
           });
-          res.write(papaparse.unparse(csvRow, {header: false}) + '\n');
-        }
-      })
-      .on('end', () => {
-        done();
-        if (step === OUTPUT_JSON_STEP) {
           if (!startedResponse) {
-            res.write('[\n');
+            if (step === OUTPUT_JSON_STEP) {
+              res.write('[\n');
+            }
+            else if (step === OUTPUT_CSV_STEP) {
+              if (explode) {
+                // remove parameters and extras since they have been exploded into the columns
+                columns.splice(columns.indexOf('parameters'), 1);
+                columns.splice(columns.indexOf('extras'), 1);
+              }
+              res.write(columns.join(",") + '\n');
+            }
+            startedResponse = true;
           }
-          res.write('\n]\n');
-        }
-        res.end();
-        console.log(`request ${requestId} done`);
-      });
+          else {
+            if (step === OUTPUT_JSON_STEP) {
+              res.write(',\n');
+            }
+          }
+          if (step === OUTPUT_JSON_STEP) {
+            res.write(JSON.stringify(row));
+          }
+          else if (step === OUTPUT_CSV_STEP) {
+            const csvRow = {
+              fields: columns,
+              data: []
+            };
+            columns.forEach((column) => {
+              let value = "";
+              if (row.hasOwnProperty(column)) {
+                const stringify = objectColumns.indexOf(column) !== -1;
+                value = stringify ? JSON.stringify(row[column]) : row[column];
+              }
+              else if (explode) {
+                objectColumns.forEach((explodedColumn) => {
+                  if ((row[explodedColumn] || {}).hasOwnProperty(column)) {
+                    value = row[explodedColumn][column];
+                  }
+                });
+              }
+              csvRow.data.push(value);
+            });
+            res.write(papaparse.unparse(csvRow, {header: false}) + '\n');
+          }
+        })
+        .on('end', () => {
+          //release the client when the stream is finished
+          done();
+          if (step === OUTPUT_JSON_STEP) {
+            if (!startedResponse) {
+              res.write('[\n');
+            }
+            res.write('\n]\n');
+          }
+          res.end();
+          console.log(`request ${requestId} done`);
+        });
     };
     processQuery(isCSV ? OUTPUT_CSV_STEP : OUTPUT_JSON_STEP);
   });
