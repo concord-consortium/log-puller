@@ -328,7 +328,7 @@ const outputPortalReport = (req, res) => {
     }
 
     const processQuery = (step) => {
-      const query = new QueryStream(`SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers}`, endpointValues, {batchSize: DB_BATCH_SIZE});
+      const query = new QueryStream(`SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers} ORDER BY time`, endpointValues, {batchSize: DB_BATCH_SIZE});
       client
         .query(query)
         .on('error', (err) => {
