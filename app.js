@@ -302,7 +302,7 @@ const outputPortalReport = (req, res) => {
   req.db(async (client, done) => {
     let startedResponse = false;
     const baseColumns = ['id', 'session', 'username', 'application', 'activity', 'event', 'time', 'parameters', 'extras', 'event_value', 'run_remote_endpoint'];
-    const columns = baseColumns.slice();
+    let additionalColumns = ADDITIONAL_LOG_COLUMNS.slice();
     const objectColumns = ['parameters', 'extras'];
 
     if (isCSV && explode) {
@@ -314,18 +314,17 @@ const outputPortalReport = (req, res) => {
 
       try {
         const result = await client.query(query, endpointValues);
-        const additionalColumns = result.rows.map(row => row.key);
-        additionalColumns.sort().forEach(newCol => {
-          if (columns.indexOf(newCol) === -1) {
-            columns.push(newCol);
-          }
-        });
+        additionalColumns = additionalColumns.concat(result.rows.map(row => row.key).sort());
       } catch (error) {
         done();
         return res.error(err.message, 500);
       }
       console.timeEnd('explode');
     }
+
+    // [ ... new Set(<some_array>) ] is a way to make sure that all the values are unique and their order is preserved.
+    // .concat returns a new array, so we're not modifying baseColumns.
+    const columns = [ ...new Set(baseColumns.concat(additionalColumns)) ];
 
     const processQuery = (step) => {
       const query = new QueryStream(`SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers} ORDER BY time`, endpointValues, {batchSize: DB_BATCH_SIZE});
