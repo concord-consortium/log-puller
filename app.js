@@ -2,7 +2,6 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 const pg = require('pg');
-const QueryStream = require('pg-query-stream');
 const url = require('url');
 const superagent = require('superagent');
 const jwt = require('jsonwebtoken');
@@ -57,9 +56,9 @@ class MockDBClient {
   runEvents() {
     // copy the rows so requeries use original values
     const rows = _.cloneDeep(this.options.rows || []);
-    if (this.eventCallbacks.data) {
+    if (this.eventCallbacks.row) {
       rows.forEach((row) => {
-        this.eventCallbacks.data(row);
+        this.eventCallbacks.row(row);
       });
     }
     if (this.eventCallbacks.end) {
@@ -197,14 +196,14 @@ const query = (req, res, download) => {
 
       columns = columns.filter((column) => exclude.indexOf(column) === -1).join(", ");
 
-      const query = new QueryStream("SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND (" + markers + ')', paramValues, {batchSize: DB_BATCH_SIZE});
+      const sql = "SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND (" + markers + ")";
       client
-        .query(query)
+        .query(sql, paramValues)
         .on('error', (err) => {
           done();
           res.error(err.toString(), 500);
         })
-        .on('data', (row) => {
+        .on('row', (row) => {
           ["parameters", "extras"].forEach((column) => {
             if (row.hasOwnProperty(column)) {
               hstore.parse(row[column], (result) => {
@@ -327,14 +326,14 @@ const outputPortalReport = (req, res) => {
     const columns = [ ...new Set(baseColumns.concat(additionalColumns)) ];
 
     const processQuery = (step) => {
-      const query = new QueryStream(`SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers} ORDER BY time`, endpointValues, {batchSize: DB_BATCH_SIZE});
+      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers} ORDER BY time`;
       client
-        .query(query)
+        .query(sql, endpointValues)
         .on('error', (err) => {
           done();
           res.error(err.toString(), 500);
         })
-        .on('data', row => {
+        .on('row', row => {
           // Parse hstore columns and extend row object.
           objectColumns.forEach(column => {
             if (row.hasOwnProperty(column)) {
