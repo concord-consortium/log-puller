@@ -325,6 +325,20 @@ const outputPortalReport = (req, res) => {
     // .concat returns a new array, so we're not modifying baseColumns.
     const columns = [ ...new Set(baseColumns.concat(additionalColumns)) ];
 
+    // send initial bytes so that long queries reset the inital 30 second timeout to the 55 second sliding window
+    // see: https://devcenter.heroku.com/articles/request-timeout
+    if (isCSV) {
+      if (explode) {
+        // remove parameters and extras since they have been exploded into the columns
+        columns.splice(columns.indexOf('parameters'), 1);
+        columns.splice(columns.indexOf('extras'), 1);
+      }
+      res.write(columns.join(",") + '\n');
+    }
+    else {
+      res.write('[\n');
+    }
+
     const processQuery = (step) => {
       const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers} ORDER BY time`;
       client
@@ -349,17 +363,6 @@ const outputPortalReport = (req, res) => {
             row[column] = endpointInfo[row.run_remote_endpoint][column];
           });
           if (!startedResponse) {
-            if (step === OUTPUT_JSON_STEP) {
-              res.write('[\n');
-            }
-            else if (step === OUTPUT_CSV_STEP) {
-              if (explode) {
-                // remove parameters and extras since they have been exploded into the columns
-                columns.splice(columns.indexOf('parameters'), 1);
-                columns.splice(columns.indexOf('extras'), 1);
-              }
-              res.write(columns.join(",") + '\n');
-            }
             startedResponse = true;
           }
           else {
@@ -394,12 +397,9 @@ const outputPortalReport = (req, res) => {
           }
         })
         .on('end', () => {
-          //release the client when the stream is finished
+          // release the client when the stream is finished
           done();
           if (step === OUTPUT_JSON_STEP) {
-            if (!startedResponse) {
-              res.write('[\n');
-            }
             res.write('\n]\n');
           }
           res.end();
