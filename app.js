@@ -22,8 +22,14 @@ const DB_BATCH_SIZE = 5000;
 // This list defines which properties are included.
 const ADDITIONAL_LOG_COLUMNS = ["class_id"];
 
+// use seperate RDS_DATABASE_URL because you can't override Heroku's DATABASE_URL config var
+const databaseUrl = process.env.RDS_DATABASE_URL || process.env.DATABASE_URL;
+if (process.env.RDS_DATABASE_URL) {
+  console.log("NOTE: Using RDS_DATABASE_URL instead of DATABASE_URL");
+}
+
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: databaseUrl,
   ssl: pg.defaults.ssl
 });
 
@@ -146,8 +152,8 @@ app.use((req, res, next) => {
     });
   };
 
-  if (!process.env.DATABASE_URL) {
-    next('Missing DATABASE_URL environment variable');
+  if (!databaseUrl) {
+    next('Missing RDS_DATABASE_URL or DATABASE_URL environment variable');
   }
   else {
     next();

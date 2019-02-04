@@ -90,22 +90,22 @@ Install Docker and make sure that docker-compose is installed too (it should be 
 ```
 git clone git@github.com:concord-consortium/log-puller.git
 cd log-puller
-docker-compose up 
+docker-compose up
 ```
 
-When you run it for the first time, Posgres Docker container will automatically load 
+When you run it for the first time, Posgres Docker container will automatically load
 `schema.sql` file in `docker/dev/docker-entrypoint-initdb.d`.
 
 Now open your browser to http://localhost:5000/portal-report-tester.
 
-If you're using Dinghy HTTP Proxy (https://github.com/concord-consortium/rigse/blob/master/docs/docker.md#setting-up-a-dns-and-proxy-to-avoid-port-conflicts), 
-you can also go to http://app.log-puller.docker/portal-report-tester.  
+If you're using Dinghy HTTP Proxy (https://github.com/concord-consortium/rigse/blob/master/docs/docker.md#setting-up-a-dns-and-proxy-to-avoid-port-conflicts),
+you can also go to http://app.log-puller.docker/portal-report-tester.
 
 ## Large query testing
 
 When SQL is changed in a significant way, it might be worth checking if large queries still work fine.
-Large query examples might depend on the production data. You can connect your local server to it using Postgres 
-connection string - open Heroku console and look for `DATABASE_URL` environment variable. 
+Large query examples might depend on the production data. You can connect your local server to it using Postgres
+connection string - open Heroku console and look for `DATABASE_URL` environment variable.
 Then, set it locally using `.env` file.
 
 To test one of the queries, go to:
@@ -115,8 +115,19 @@ http://localhost:5000/portal-report
 and paste it there.
 
 You also need a valid HMAC Signature. There are online tools that let you generate it (e.g. https://www.freeformatter.com/hmac-generator.html).
-Make sure that you use a correct secret key and SHA256 algorithm. Check your `JWT_HMAC_SECRET` env variable, which can 
+Make sure that you use a correct secret key and SHA256 algorithm. Check your `JWT_HMAC_SECRET` env variable, which can
 be defined either in `docker-compose.yml` or your `.env` file.
+
+## Use with RDS
+
+To use an RDS database instead of the Heroku database you need to add the following config vars to Heroku:
+
+1. `PGSSLROOTCERT=rds-combined-ca-bundle.pem`
+2. `PGSSLMODE=verify-full`
+3. `RDS_DATABASE_URL=postgres://<username>:<password>@<public_hostname>/<database_name>`
+
+Heroku does not allow you to alter the `DATABASE_URL` config var so the code first looks for `RDS_DATABASE_URL` and then falls back to `DATABASE_URL`.
+
 
 ## License
 
