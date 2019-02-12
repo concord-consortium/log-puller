@@ -34,10 +34,12 @@ html
           | No
           input(type='radio', name='explode', value='yes')
           | Yes
-        p#count-btn-container
-          input(type='submit', name='count', value='Count Logs')
         p
+          span#count-btn-container
+            input(type='submit', name='count', value='Count Logs')
           input(type='submit', name='download', value='Download Logs')
+        p
+          span.warning #{count_logs_warning}
 
         script(src='https://code.jquery.com/jquery-3.3.1.min.js', integrity='sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=', crossorigin='anonymous')
         script
