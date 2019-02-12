@@ -346,7 +346,7 @@ const outputPortalReport = (req, res) => {
     }
 
     const processQuery = (step) => {
-      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers} ORDER BY time`;
+      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers}`; // NOTE: removed "ORDER BY time" to stop query from timing out
       client
         .query(sql, endpointValues)
         .on('error', (err) => {
@@ -473,6 +473,16 @@ app.get('/', (req, res) => {
 });
 
 const renderPortalReportForm = (req, res, params) => {
+  // check if warning is needed about counting logs
+  if (params.json) {
+    try {
+      json = JSON.parse(params.json);
+      if (json && json.learners && json.learners.length) {
+        params.count_logs_warning = `NOTE: There are ${json.learners.length} learners in the query.  Using "Count Logs" when there are many learners may result in a query timeout.`;
+      }
+      console.log(json.learners.length);
+    } catch (e) {}
+  }
   res.type('html');
   res.render('portal-report', params);
 };
