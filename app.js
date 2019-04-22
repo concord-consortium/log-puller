@@ -279,8 +279,8 @@ const getQuery = (req) => {
   let queryValues;
   let queryMarkers;
   let queryInfo = {};
-  if (result.learners) {
-    let learners = [];
+  const {learners} = result;
+  if (learners) {
     queryValues = learners.map(l => l.run_remote_endpoint)
     queryMarkers = learners.map((l, idx) => `(run_remote_endpoint = $${idx + 1})`).join(' or ');
     learners.forEach(l => queryInfo[l.run_remote_endpoint] = l);
@@ -308,15 +308,11 @@ const getQuery = (req) => {
 
 const outputPortalReport = (req, res) => {
   const requestId = new Date().getTime();
-  console.log(`outputPortalReport - request ${requestId}`);
-  console.log(req.body);
 
   const { error, queryInfo, queryValues, queryMarkers } = getQuery(req);
   if (error) {
     return res.error(error, 400);
   }
-
-  console.log(`processing ${queryValues.length} endpoints`);
 
   const isCSV = req.body.format === "csv";
   const explode = req.body.explode === "yes";
@@ -429,7 +425,6 @@ const outputPortalReport = (req, res) => {
             res.write('\n]\n');
           }
           res.end();
-          console.log(`request ${requestId} done`);
         });
     };
     processQuery(isCSV ? OUTPUT_CSV_STEP : OUTPUT_JSON_STEP);
@@ -438,25 +433,18 @@ const outputPortalReport = (req, res) => {
 
 const outputLogsCount = (req, res) => {
   const requestId = new Date().getTime();
-  console.log(`outputLogsCount - request ${requestId}`);
-  console.log(req.body);
 
   const { error, queryValues, queryMarkers } = getQuery(req);
   if (error) {
     return res.error(error, 400);
   }
 
-  console.log(`processing ${queryValues.length} endpoints`);
-  console.log(queryMarkers);
-
   res.setHeader('Content-Type', 'application/json');
 
   req.db(async (client, done) => {
     try {
-      console.log(`SELECT COUNT(*) FROM logs WHERE ${queryMarkers}`, queryValues)
       const response = await client.query(`SELECT COUNT(*) FROM logs WHERE ${queryMarkers}`, queryValues)
       res.success(response.rows[0].count);
-      console.log(`request ${requestId} done`);
     } catch (e) {
       res.error(e.message, 500);
     }
@@ -511,10 +499,8 @@ const renderPortalReportForm = (req, res, params) => {
       if (json && json.learners && json.learners.length) {
         params.count_logs_warning = `NOTE: There are ${json.learners.length} learners in the query.  Using "Count Logs" when there are many learners may result in a query timeout.`;
       }
-      console.log(json.learners.length);
     } catch (e) {}
   }
-  console.log(params)
   res.type('html');
   res.render('portal-report', params);
 };
