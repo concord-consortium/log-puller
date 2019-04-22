@@ -34,13 +34,16 @@ html
           | No
           input(type='radio', name='explode', value='yes')
           | Yes
-        p
+        p.buttons
+          input(type='submit', name='download', value='Download Logs')
+          if debug
+            input(type='submit', name='debug', value='Debug Query')
           span#count-btn-container
             input(type='submit', name='count', value='Count Logs')
-          input(type='submit', name='download', value='Download Logs')
         p
           span.warning #{count_logs_warning}
+        p#debug-info
 
         script(src='https://code.jquery.com/jquery-3.3.1.min.js', integrity='sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=', crossorigin='anonymous')
         script
-          include count-button.js
+          include button-handlers.js

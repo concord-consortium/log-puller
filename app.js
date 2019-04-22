@@ -12,6 +12,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const _ = require('lodash');
 const parseQuery = require('./parse-query');
+const translateQuery = require('./translate-query');
 
 pg.defaults.ssl = process.env.PG_SSL !== 'false';
 
@@ -196,8 +197,8 @@ const query = (req, res, download) => {
       let columns = ["id", "session", "username", "application", "activity", "event", "time", "parameters", "extras", "event_value"];
       const exclude = (req.query.exclude || "").split(",");
       const paramValues = ['activity: ' + activityId].concat(endPoints);
-      const endpointMarkers = endPoints.map((endPoint, i) => '$' + (i+2)); // +2 because activity name is $1
-      const markers = endpointMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
+      const queryMarkers = endPoints.map((endPoint, i) => '$' + (i+2)); // +2 because activity name is $1
+      const markers = queryMarkers.map(m => `(run_remote_endpoint = ${m})`).join(' or ');
       let startedResponse = false;
 
       columns = columns.filter((column) => exclude.indexOf(column) === -1).join(", ");
@@ -241,7 +242,7 @@ const query = (req, res, download) => {
   });
 };
 
-const getEndpoints = (req) => {
+const getQuery = (req) => {
   if (!process.env.JWT_HMAC_SECRET) {
     return { error: 'Missing JWT_HMAC_SECRET environment variable (needed to validate json signature)' };
   }
@@ -268,22 +269,41 @@ const getEndpoints = (req) => {
     return { error: 'Unable to parse json parameter' };
   }
 
-  let learners = [];
+  let result;
   try {
-    learners = parseQuery(json);
+    result = parseQuery(json);
   } catch (e) {
     return { error: e.message };
   }
-  const endpointValues = learners.map(l => l.run_remote_endpoint)
-  const endpointMarkers = learners.map((l, idx) => `(run_remote_endpoint = $${idx + 1})`).join(' or ');
-  const endpointInfo = {}
-  learners.forEach(l => endpointInfo[l.run_remote_endpoint] = l);
 
-  if (!endpointValues || endpointValues.length === 0) {
+  let queryValues;
+  let queryMarkers;
+  let queryInfo = {};
+  if (result.learners) {
+    let learners = [];
+    queryValues = learners.map(l => l.run_remote_endpoint)
+    queryMarkers = learners.map((l, idx) => `(run_remote_endpoint = $${idx + 1})`).join(' or ');
+    learners.forEach(l => queryInfo[l.run_remote_endpoint] = l);
+  }
+  else if (result.query) {
+    let translated;
+    try {
+      translated = translateQuery(result.query);
+    } catch (e) {
+      return { error: e.message };
+    }
+    queryValues = translated.queryValues;
+    queryMarkers = translated.queryMarkers;
+  }
+  else {
+    return {error: "Missing learners or query in json"};
+  }
+
+  if (!queryValues || queryValues.length === 0) {
     return { error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter' };
   }
 
-  return { error: null, endpointValues, endpointMarkers, endpointInfo };
+  return { error: null, queryValues, queryMarkers, queryInfo };
 };
 
 const outputPortalReport = (req, res) => {
@@ -291,12 +311,12 @@ const outputPortalReport = (req, res) => {
   console.log(`outputPortalReport - request ${requestId}`);
   console.log(req.body);
 
-  const { error, endpointInfo, endpointValues, endpointMarkers } = getEndpoints(req);
+  const { error, queryInfo, queryValues, queryMarkers } = getQuery(req);
   if (error) {
     return res.error(error, 400);
   }
 
-  console.log(`processing ${endpointValues.length} endpoints`);
+  console.log(`processing ${queryValues.length} endpoints`);
 
   const isCSV = req.body.format === "csv";
   const explode = req.body.explode === "yes";
@@ -312,13 +332,13 @@ const outputPortalReport = (req, res) => {
 
     if (isCSV && explode) {
       console.time('explode');
-      const query = `WITH base_ids as (SELECT id FROM logs WHERE ${endpointMarkers})` +
+      const query = `WITH base_ids as (SELECT id FROM logs WHERE ${queryMarkers})` +
                     `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM base_ids) ` +
                     `UNION ` +
                     `SELECT DISTINCT (each(extras)).key FROM logs WHERE id IN (SELECT id FROM base_ids)`;
 
       try {
-        const result = await client.query(query, endpointValues);
+        const result = await client.query(query, queryValues);
         additionalColumns = additionalColumns.concat(result.rows.map(row => row.key).sort());
       } catch (error) {
         done();
@@ -346,9 +366,9 @@ const outputPortalReport = (req, res) => {
     }
 
     const processQuery = (step) => {
-      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${endpointMarkers}`; // NOTE: removed "ORDER BY time" to stop query from timing out
+      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${queryMarkers}`; // NOTE: removed "ORDER BY time" to stop query from timing out
       client
-        .query(sql, endpointValues)
+        .query(sql, queryValues)
         .on('error', (err) => {
           done();
           res.error(err.toString(), 500);
@@ -366,7 +386,7 @@ const outputPortalReport = (req, res) => {
           ADDITIONAL_LOG_COLUMNS.forEach(column => {
             // Note that if value is not provided by Portal, it will be equal to `undefined` and JSON.stringify
             // won't serialize it.
-            row[column] = endpointInfo[row.run_remote_endpoint][column];
+            row[column] = queryInfo[row.run_remote_endpoint][column];
           });
           if (!startedResponse) {
             startedResponse = true;
@@ -421,19 +441,20 @@ const outputLogsCount = (req, res) => {
   console.log(`outputLogsCount - request ${requestId}`);
   console.log(req.body);
 
-  const { error, endpointValues, endpointMarkers } = getEndpoints(req);
+  const { error, queryValues, queryMarkers } = getQuery(req);
   if (error) {
     return res.error(error, 400);
   }
 
-  console.log(`processing ${endpointValues.length} endpoints`);
-  console.log(endpointMarkers);
+  console.log(`processing ${queryValues.length} endpoints`);
+  console.log(queryMarkers);
 
   res.setHeader('Content-Type', 'application/json');
 
   req.db(async (client, done) => {
     try {
-      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE ${endpointMarkers}`, endpointValues)
+      console.log(`SELECT COUNT(*) FROM logs WHERE ${queryMarkers}`, queryValues)
+      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE ${queryMarkers}`, queryValues)
       res.success(response.rows[0].count);
       console.log(`request ${requestId} done`);
     } catch (e) {
@@ -441,6 +462,16 @@ const outputLogsCount = (req, res) => {
     }
     done();
   });
+};
+
+const outputLogsDebug = (req, res) => {
+  const result = getQuery(req);
+  if (result.error) {
+    return res.error(result.error, 400);
+  }
+  else {
+    return res.success(result);
+  }
 };
 
 app.get('/', (req, res) => {
@@ -483,6 +514,7 @@ const renderPortalReportForm = (req, res, params) => {
       console.log(json.learners.length);
     } catch (e) {}
   }
+  console.log(params)
   res.type('html');
   res.render('portal-report', params);
 };
@@ -514,6 +546,9 @@ app.post('/portal-report', (req, res) => {
   }
   else if (req.body.download) {
     outputPortalReport(req, res);
+  }
+  else if (req.body.debug) {
+    outputLogsDebug(req, res);
   }
   else {
     renderPortalReportForm(req, res, req.body);
