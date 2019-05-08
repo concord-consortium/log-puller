@@ -207,7 +207,7 @@ describe('/portal-report', () => {
       .post('/portal-report')
       .send({download: true, json: '{"filter": []}', signature: sign('{"filter": []}')})
       .expect(400)
-      .expect({success: false, error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter'});
+      .expect({success: false, error: 'Invalid query, no valid filters found in json parameter'});
   });
 
   test('Log Manager query json form POST should succeed', () => {

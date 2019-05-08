@@ -13,6 +13,7 @@ const path = require('path');
 const _ = require('lodash');
 const parseQuery = require('./parse-query');
 const translateQuery = require('./translate-query');
+const generateQueryFromUsers = require('./generate-query-from-users');
 
 pg.defaults.ssl = process.env.PG_SSL !== 'false';
 
@@ -285,6 +286,16 @@ const getQuery = (req) => {
     queryMarkers = learners.map((l, idx) => `(run_remote_endpoint = $${idx + 1})`).join(' or ');
     learners.forEach(l => queryInfo[l.run_remote_endpoint] = l);
   }
+  else if (result.users) {
+    let generated;
+    try {
+      generated = generateQueryFromUsers(result.users);
+    } catch (e) {
+      return { error: e.message };
+    }
+    queryValues = generated.queryValues;
+    queryMarkers = generated.queryMarkers;
+  }
   else if (result.query) {
     let translated;
     try {
@@ -300,7 +311,7 @@ const getQuery = (req) => {
   }
 
   if (!queryValues || queryValues.length === 0) {
-    return { error: 'Invalid query, no valid run_remote_endpoint filters found in json parameter' };
+    return { error: 'Invalid query, no valid filters found in json parameter' };
   }
 
   return { error: null, queryValues, queryMarkers, queryInfo };
@@ -379,11 +390,13 @@ const outputPortalReport = (req, res) => {
             }
           });
           // Extend log entry with additional properties passed directly from Portal.
-          ADDITIONAL_LOG_COLUMNS.forEach(column => {
-            // Note that if value is not provided by Portal, it will be equal to `undefined` and JSON.stringify
-            // won't serialize it.
-            row[column] = queryInfo[row.run_remote_endpoint][column];
-          });
+          if (row.run_remote_endpoint && queryInfo[row.run_remote_endpoint]) {
+            ADDITIONAL_LOG_COLUMNS.forEach(column => {
+              // Note that if value is not provided by Portal, it will be equal to `undefined` and JSON.stringify
+              // won't serialize it.
+              row[column] = queryInfo[row.run_remote_endpoint][column];
+            });
+          }
           if (!startedResponse) {
             startedResponse = true;
           }

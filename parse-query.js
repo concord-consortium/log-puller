@@ -18,6 +18,8 @@ module.exports = (queryJson) => {
     return {learners: queryJson.learners};
   } else if (queryJson.query) {
     return {query: queryJson.query};
+  } else if (queryJson.type === "users") {
+    return {users: queryJson};
   } else {
     throw new Error('Unsupported query format - missing filter/learners section in json parameter');
   }
