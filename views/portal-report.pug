@@ -36,7 +36,7 @@ html
           | Yes
         p.buttons
           input(type='submit', name='download', value='Download Logs')
-          if debug
+          if allowDebug
             input(type='submit', name='debug', value='Debug Query')
           span#count-btn-container
             input(type='submit', name='count', value='Count Logs')
