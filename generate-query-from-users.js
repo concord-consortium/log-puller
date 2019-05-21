@@ -23,8 +23,19 @@ module.exports = (params) => {
   if (runnables) {
     const activityMarkers = [];
     runnables.forEach((runnable) => {
-      queryValues.push(`activity: ${runnable.lara_id}`);
-      activityMarkers.push(`activity = $${queryValues.length}`)
+      if (runnable.source_type === "LARA") {
+        const activityMatch = runnable.url.match(/\/activities\/(\d+)$/);
+        const sequenceMatch = runnable.url.match(/\/sequences\/(\d+)$/);
+        if (activityMatch || sequenceMatch) {
+          if (activityMatch) {
+            queryValues.push(`activity: ${activityMatch[1]}`);
+          }
+          else {
+            queryValues.push(`sequence: ${sequenceMatch[1]}`);
+          }
+          activityMarkers.push(`activity = $${queryValues.length}`)
+        }
+      }
     });
     if (activityMarkers.length > 0) {
       queryMarkersParts.push(`(${activityMarkers.join(" OR ")})`)
