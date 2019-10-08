@@ -1,11 +1,11 @@
 FROM node:8
 
-ENV APP_HOME /log-puller
-
-RUN mkdir $APP_HOME
-WORKDIR $APP_HOME
+WORKDIR /log-puller
+COPY package*.json ./
 
 RUN npm install
+
+COPY . .
 
 EXPOSE 5000
 
