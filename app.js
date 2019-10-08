@@ -475,7 +475,12 @@ const outputLogsDebug = (req, res) => {
   }
 };
 
-app.get('/', (req, res) => {
+// allow routes at both the root and /log-puller levels for generic Fargate app deployment
+const route = (path) => {
+  return [path, `/log-puller${path}`];
+}
+
+app.get(route('/'), (req, res) => {
   const params = {
     portal_token: 'PORTAL-GENERATED-TOKEN'
   };
@@ -518,28 +523,28 @@ const renderPortalReportForm = (req, res, params) => {
   res.render('portal-report', params);
 };
 
-app.get('/view', (req, res) => {
+app.get(route('/view'), (req, res) => {
   query(req, res, false);
 });
 
-app.get('/download', (req, res) => {
+app.get(route('/download'), (req, res) => {
   query(req, res, true);
 });
 
-app.get('/portal-report', (req, res) => {
+app.get(route('/portal-report'), (req, res) => {
   renderPortalReportForm(req, res, req.query);
 });
 
-app.post('/logs-count', (req, res) => {
+app.post(route('/logs-count'), (req, res) => {
   renderPortalReportForm(req, res, req.query);
 });
 
-app.get('/portal-report-tester', (req, res) => {
+app.get(route('/portal-report-tester'), (req, res) => {
   res.type('html');
   res.render('portal-report-tester', req.query);
 });
 
-app.post('/portal-report', (req, res) => {
+app.post(route('/portal-report'), (req, res) => {
   if (req.body.count) {
     outputLogsCount(req, res);
   }
