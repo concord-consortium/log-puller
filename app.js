@@ -317,6 +317,11 @@ const getQuery = (req) => {
   return { error: null, queryValues, queryMarkers, queryInfo };
 };
 
+const getTEEventsFilter = (req) => {
+  const filterTEEvents = req.body.filterTEEvents === "yes";
+  return filterTEEvents ? "AND (extras->'url' LIKE '%mode=teacher-edition%') AND (event LIKE 'TeacherEdition-%')" : "";
+}
+
 const outputPortalReport = (req, res) => {
   const requestId = new Date().getTime();
 
@@ -327,6 +332,7 @@ const outputPortalReport = (req, res) => {
 
   const isCSV = req.body.format === "csv";
   const explode = req.body.explode === "yes";
+  const filterTEEventsWhere = getTEEventsFilter(req);
 
   res.type(isCSV ? 'csv' : 'json');
   res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
@@ -373,7 +379,7 @@ const outputPortalReport = (req, res) => {
     }
 
     const processQuery = (step) => {
-      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${queryMarkers}`; // NOTE: removed "ORDER BY time" to stop query from timing out
+      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere}`; // NOTE: removed "ORDER BY time" to stop query from timing out
       client
         .query(sql, queryValues)
         .on('error', (err) => {
@@ -446,6 +452,7 @@ const outputPortalReport = (req, res) => {
 
 const outputLogsCount = (req, res) => {
   const requestId = new Date().getTime();
+  const filterTEEventsWhere = getTEEventsFilter(req);
 
   const { error, queryValues, queryMarkers } = getQuery(req);
   if (error) {
@@ -456,7 +463,8 @@ const outputLogsCount = (req, res) => {
 
   req.db(async (client, done) => {
     try {
-      const response = await client.query(`SELECT COUNT(*) FROM logs WHERE ${queryMarkers}`, queryValues)
+      const sql = `SELECT COUNT(*) FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere}`;
+      const response = await client.query(sql, queryValues)
       res.success(response.rows[0].count);
     } catch (e) {
       res.error(e.message, 500);
@@ -475,7 +483,12 @@ const outputLogsDebug = (req, res) => {
   }
 };
 
-app.get('/', (req, res) => {
+// allow routes at both the root and /log-puller levels for generic Fargate app deployment
+const route = (path) => {
+  return [path, `/log-puller${path}`];
+}
+
+app.get(route('/'), (req, res) => {
   const params = {
     portal_token: 'PORTAL-GENERATED-TOKEN'
   };
@@ -518,28 +531,28 @@ const renderPortalReportForm = (req, res, params) => {
   res.render('portal-report', params);
 };
 
-app.get('/view', (req, res) => {
+app.get(route('/view'), (req, res) => {
   query(req, res, false);
 });
 
-app.get('/download', (req, res) => {
+app.get(route('/download'), (req, res) => {
   query(req, res, true);
 });
 
-app.get('/portal-report', (req, res) => {
+app.get(route('/portal-report'), (req, res) => {
   renderPortalReportForm(req, res, req.query);
 });
 
-app.post('/logs-count', (req, res) => {
+app.post(route('/logs-count'), (req, res) => {
   renderPortalReportForm(req, res, req.query);
 });
 
-app.get('/portal-report-tester', (req, res) => {
+app.get(route('/portal-report-tester'), (req, res) => {
   res.type('html');
   res.render('portal-report-tester', req.query);
 });
 
-app.post('/portal-report', (req, res) => {
+app.post(route('/portal-report'), (req, res) => {
   if (req.body.count) {
     outputLogsCount(req, res);
   }
