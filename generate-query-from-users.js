@@ -51,10 +51,6 @@ module.exports = (params) => {
     queryMarkersParts.push(`time <= $${queryValues.length}`);
   }
 
-  if (queryMarkersParts.length > 0) {
-    queryMarkersParts.unshift("(application = 'LARA-log-poc')")
-  }
-
   const queryMarkers = queryMarkersParts.join(" AND ");
 
   return { queryMarkers, queryValues };
