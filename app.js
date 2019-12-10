@@ -204,7 +204,7 @@ const query = (req, res, download) => {
 
       columns = columns.filter((column) => exclude.indexOf(column) === -1).join(", ");
 
-      const sql = "SELECT " + columns + " FROM logs WHERE application = 'LARA-log-poc' AND activity = $1 AND (" + markers + ")";
+      const sql = "SELECT " + columns + " FROM logs WHERE activity = $1 AND (" + markers + ")";
       client
         .query(sql, paramValues)
         .on('error', (err) => {

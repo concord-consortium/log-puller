@@ -19,31 +19,31 @@ describe("generateQueryFromUsers", () => {
 
   test("should handle start_date query", () => {
     const params = {domain: "", users: [], runnables: [], start_date: "01/02/19", end_date: null}
-    const result = {queryMarkers: "(application = 'LARA-log-poc') AND time >= $1", queryValues: ["19-01-02"]};
+    const result = {queryMarkers: "time >= $1", queryValues: ["19-01-02"]};
     expect(generateQueryFromUsers(params)).toMatchObject(result);
   });
 
   test("should handle end_date query", () => {
     const params = {domain: "", users: [], runnables: [], start_date: null, end_date: "01/02/19"}
-    const result = {queryMarkers: "(application = 'LARA-log-poc') AND time <= $1", queryValues: ["19-01-02"]};
+    const result = {queryMarkers: "time <= $1", queryValues: ["19-01-02"]};
     expect(generateQueryFromUsers(params)).toMatchObject(result);
   });
 
   test("should handle a users query", () => {
     const params = {domain: "example.com", users, runnables: [], start_date: null, end_date: null}
-    const result = {queryMarkers: "(application = 'LARA-log-poc') AND (username = $1 OR username = $2)", queryValues: ["1@example.com", "2@example.com"]};
+    const result = {queryMarkers: "(username = $1 OR username = $2)", queryValues: ["1@example.com", "2@example.com"]};
     expect(generateQueryFromUsers(params)).toMatchObject(result);
   });
 
   test("should handle a runnables query", () => {
     const params = {domain: "example.com", users: [], runnables, start_date: null, end_date: null}
-    const result = {queryMarkers: "(application = 'LARA-log-poc') AND (activity = $1 OR activity = $2)", queryValues: ["activity: 1000", "activity: 1001"]};
+    const result = {queryMarkers: "(activity = $1 OR activity = $2)", queryValues: ["activity: 1000", "activity: 1001"]};
     expect(generateQueryFromUsers(params)).toMatchObject(result);
   });
 
   test("should handle a combined query", () => {
     const params = {domain: "example.com", users: users, runnables, start_date: "01/02/19", end_date: "03/04/19"}
-    const result = {queryMarkers: "(application = 'LARA-log-poc') AND (username = $1 OR username = $2) AND (activity = $3 OR activity = $4) AND time >= $5 AND time <= $6", queryValues: ["1@example.com", "2@example.com", "activity: 1000", "activity: 1001", "19-01-02", "19-03-04"]};
+    const result = {queryMarkers: "(username = $1 OR username = $2) AND (activity = $3 OR activity = $4) AND time >= $5 AND time <= $6", queryValues: ["1@example.com", "2@example.com", "activity: 1000", "activity: 1001", "19-01-02", "19-03-04"]};
     expect(generateQueryFromUsers(params)).toMatchObject(result);
   });
 

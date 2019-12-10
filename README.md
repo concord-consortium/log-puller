@@ -77,8 +77,8 @@ Once the activity id is parsed the code then validates that at the students arra
 non-empty `endpoint_url`.  If no `endpoint_url` values are found then the code rejects the request with an error message.
 
 Now with the activity id and at least one endpoint url in place a query is made to the shared cc-log-manager database
-with the application name set to `LARA-log-poc`, the activity set to `activity: <activity id>` and a filter on the
-`run_remote_endpoint` in the extras JSON object set to the student endpoints extracted in the offering info.
+with the activity set to `activity: <activity id>` and a filter on the`run_remote_endpoint` in the extras JSON object
+set to the student endpoints extracted in the offering info.
 
 The results of that query are either streamed one row at a time (to save memory) when the view endpoint it used or
 downloaded as a file if the download option is used.
