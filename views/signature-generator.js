@@ -9,8 +9,11 @@
   var signature = $('input[name="signature"]');
   var secret = $('input[name="secret"]');
 
-  function generateSignature() {
+  var SECRET_KEY = "secret"
 
+  secret.val(window.localStorage.getItem(SECRET_KEY) || "")
+
+  function generateSignature() {
     var secretValue = secret.val();
     if (secretValue.length > 0) {
       $.ajax({
@@ -28,12 +31,15 @@
     }
   }
 
-  json.on("keyup", function () {
+  function signatureChanged() {
     generateSignature();
-  })
+    window.localStorage.setItem(SECRET_KEY, secret.val())
+  }
 
-  secret.on("keyup", function () {
-    generateSignature();
-  })
+  json.on("keyup", generateSignature);
+  json.on("change", generateSignature);
+
+  secret.on("keyup", signatureChanged);
+  secret.on("change", signatureChanged);
 
 })();

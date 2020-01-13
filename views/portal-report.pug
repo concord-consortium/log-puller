@@ -95,7 +95,7 @@ html
             label(for='json') For testing/manual query: JSON Query from Portal (#[i required])
             textarea(name='json')= json
           p
-            label(for='secret') For testing/manual query: HMAC Secret from Portal (#[i optional, will generate HMAC Signature])
+            label(for='secret') For testing/manual query: HMAC Secret from Portal (#[i optional, will generate HMAC Signature &amp; is stored in localStorage])
             input(type='text', name='secret', value=signature)
           p
             label(for='signature') For testing/manual query: HMAC Signature from Portal (#[i required])
