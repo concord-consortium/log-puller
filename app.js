@@ -483,6 +483,21 @@ const outputLogsDebug = (req, res) => {
   }
 };
 
+const outputSignature = (req, res) => {
+  let json = req.body.json;
+  if (!json) {
+    return { error: 'Missing json body parameter' };
+  }
+  const secret = req.body.secret;
+  if (!secret) {
+    return { error: 'Missing secret body parameter' };
+  }
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(json);
+  const signature = (new Buffer(hmac.digest('hex'))).toString();
+  return res.success(signature);
+};
+
 // allow routes at both the root and /log-puller levels for generic Fargate app deployment
 const route = (path) => {
   return [path, `/log-puller${path}`];
@@ -555,6 +570,9 @@ app.get(route('/portal-report-tester'), (req, res) => {
 app.post(route('/portal-report'), (req, res) => {
   if (req.body.count) {
     outputLogsCount(req, res);
+  }
+  else if (req.body.getSignature) {
+    outputSignature(req, res);
   }
   else if (req.body.download) {
     outputPortalReport(req, res);

@@ -1,15 +1,27 @@
 (function () {
   var form = $('form');
-  var countButtonContainer = $('#count-btn-container');
-  var spinner = $('<div>Please wait <i class="fas fa-spinner fa-pulse"></i></div>');
+  var queryResult = $('#queryResult');
+  var running = $('#running');
   var result = $('<b>');
+  var buttons = $(".buttons > input");
   var countBtn = $('input[name="count"]');
   var debugBtn = $('input[name="debug"]');
   var debugInfo = $('#debug-info');
+  var expandNote = $('#expandNote');
+  var expandedNote = $('#expandedNote');
 
-  // Attach a delegated event handler, so it doesn't get messed up when we remove and re-add button.
-  countButtonContainer.on('click', 'input', function (e) {
+  function querying(runningQuery) {
+    if (runningQuery) {
+      running.show();
+    } else {
+      running.hide();
+    }
+    buttons.attr("disabled", runningQuery);
+  }
+
+  countBtn.on('click', function (e) {
     e.preventDefault(); // do not submit form
+    querying(true)
     $.ajax({
       method: 'POST',
       data: form.serialize() + "&count=true",
@@ -22,18 +34,15 @@
         const error = (jqXHR.responseJSON && jqXHR.responseJSON.error) || '';
         console.error(errorThrown, error);
         window.alert(`Request has failed.\n${errorThrown}: ${error}\n`);
-        countButtonContainer.append(countBtn);
       }
     }).always(function () {
-      spinner.remove();
+      querying(false)
     });
-
-    countBtn.remove();
-    countButtonContainer.append(spinner);
   });
 
   debugBtn.on('click', function (e) {
     e.preventDefault(); // do not submit form
+    querying(true)
     $.ajax({
       method: 'POST',
       data: form.serialize() + "&debug=true",
@@ -46,7 +55,14 @@
         console.error(errorThrown, error);
         window.alert(`Request has failed.\n${errorThrown}: ${error}\n`);
       }
+    }).always(function () {
+      querying(false)
     });
+  });
+
+  expandNote.on('click', function (e) {
+    e.preventDefault();
+    expandedNote.toggle();
   });
 
 })();
