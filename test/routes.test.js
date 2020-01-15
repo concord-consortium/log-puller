@@ -346,6 +346,27 @@ describe('/portal-report', () => {
       .expect(200, {success: true, result: 123});
   });
 
+  test('getSignature request should succeed', () => {
+    const json = `
+    {
+      "learners": [
+        {"run_remote_endpoint": "https://example.com/1"}
+      ]
+    }
+    `;
+    mockDB({
+      rows: [
+        {count: 123},
+      ]
+    });
+    return request(app)
+      .post('/portal-report')
+      .send({getSignature: true, json: json, secret: process.env.JWT_HMAC_SECRET})
+      .expect('Content-type', /application\/json/)
+      .expect(200, {success: true, result: sign(json)});
+  });
+
+
 });
 
 describe('/portal-report-tester', () => {

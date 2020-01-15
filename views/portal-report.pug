@@ -9,15 +9,96 @@ html
     .workspace
       form(method='post')
         if !json || !signature
-          p.note
-            | If you are seeing this note you are either a developer testing this form or have not reached this page
-            | using the report portal.  If you are not testing this page please return to the report portal
-            | and use the "Download Portal Report" button to properly set the needed parameters.
+          div.note
+            p
+              b TEST/MANUAL QUERY MODE
+            p
+              | If you are seeing this note you are either a developer testing this form or have not reached this page
+              | using the report portal and are manually querying the log manager.  If you are not doing either please return to the report portal
+              | and use the "Export Logs" button to properly set the needed parameters.
+            p
+              | If you are testing/manually querying #[a(href='#' id='expandNote') click here]
+              | to expand this note to see how to generate the HMAC signature and the various query syntaxes.
+            div#expandedNote
+              p
+                b HOW TO GENERATE THE HMAC SIGNATURE
+              p
+                | The log manager validates that you can perform the query by checking a hash of the query with a secret it shares with
+                | the portal.  The portal report generates this hash when it sends its request to the log puller. To test or manually query
+                | using the log puller you will enter this secret in the form below or manually generate the HMAC signature yourself.
+                | This secret is a real secret and can be obtained from Doug or Scott if needed.
+              p
+                | To generate the HMAC signature yourself once you have entered the query select the query and copy it.  Then load #[a(href='https://www.freeformatter.com/hmac-generator.html') this page]
+                | and paste the query into the "Copy-paste the string here" field, copy the portal HMAC secret into the "Secret Key" field and select
+                | "Select a message digest algorithm" from the "Select a message digest algorithm" dropdown.  Once the signature is generated on that page
+                | enter it in the "HMAC Signature from Portal" field in the form below.
+              p
+                b QUERY SYNTAXES
+              p
+                | The log puller supports various query syntaxes (it has morphed over its lifetime)
+              p
+                | #[b Filter queries]: this is subset of the old log manager query syntax to query by learner:
+              pre
+                | {"filter": [{"key": "run_remote_endpoint", "list": [&lt;endpoint-urls&gt;]}]}
+              p
+                | #[b Learner queries]: this shortened version of the old log manager query syntax to query by learner:
+              pre
+                | {"learners": [&lt;endpoint-urls&gt;]}
+              p
+                | #[b User queries]: this supports the portal user report:
+              pre
+                | {
+                |   "users": [{"id": &lt;user-id-1&gt;}, {"id": &lt;user-id-2&gt;}, ...],
+                |   "domain": "&lt;portal-domain&gt;",
+                |   "runnables": [{"source_type": "LARA", "url": &lt;activity-or-sequence-url&gt;}, ...],
+                |   "start_date": "&lt;MM/DD/YYYY&gt;",
+                |   "end_date": "&lt;MM/DD/YYYY&gt;"
+                | }
+              p
+                | #[b Ad Hoc queries]: this supports the ad-hoc queries of the following fields:
+                | "activity", "application", "event", "run_remote_endpoint", "session", "time", "username"
+              pre
+                | {"query": ["&lt;operator&gt;", &lt;parameters...&gt;]}
+              p
+                | Where #[i &lt;operator&gt;] can be "AND", "OR", "IN", "IN-OR", "IN-AND" or any
+                | #[a(href='https://www.postgresql.org/docs/9.0/functions-comparison.html') valid Postgres comparison operator] like
+                | "=", "&lt;", "&gt;", "&lt;=", etc.
+              p
+                | The "AND" and "OR" operators must have only two parameters (this should probably be changed) whereas the "IN-OR" and "IN-AND"
+                | support variable number of parameters. The "IN-OR" and "IN-AND" operators are shortcuts
+                | for generating "=" comparisons joined by either "OR" or "AND", e.g.
+                | ["IN-AND", "event", ["opened", "closed"]] is the same as
+                | ["AND", ["=", "event", "opened"], ["=", "event", "closed"]].
+              p
+                | And the #[i &lt;parameters...&gt;] can either be strings or arrays of sub-queries so that you can make arbitrarily complex queries.
+                | A final shortcut is that any two element query is evaluated as an "=" query, eg. ["session", "foo"] is the same as
+                | ["=", "session", "foo"].
+              p
+                | Example of a simple ad-hoc query that returns all events from January 1, 2020 onward:
+              pre
+                | ["&lt;=", "time", "01/01/2020"]
+              p
+                | Example of a more complex ad-hoc query that returns all CODAP events between January 1, 2020 and January 3, 2020:
+              pre
+                | {
+                |  "query": [
+                |    "and",
+                |    ["=", "application", "CODAP"],
+                |    [
+                |      "and",
+                |      ["&gt;=", "time", "01/01/2020"],
+                |      ["&lt;=", "time", "01/03/2020"]
+                |    ]
+                |  ]
+                | }
           p
-            label(for='json') For testing: JSON Query from Portal
+            label(for='json') For testing/manual query: JSON Query from Portal (#[i required])
             textarea(name='json')= json
           p
-            label(for='signature') For testing: HMAC Signature from Portal
+            label(for='secret') For testing/manual query: HMAC Secret from Portal (#[i optional, will generate HMAC Signature &amp; is stored in localStorage])
+            input(type='text', name='secret', value=signature)
+          p
+            label(for='signature') For testing/manual query: HMAC Signature from Portal (#[i required])
             input(type='text', name='signature', value=signature)
         else
           input(type='hidden', name='json', value=json)
@@ -44,12 +125,15 @@ html
           input(type='submit', name='download', value='Download Logs')
           if allowDebug
             input(type='submit', name='debug', value='Debug Query')
-          span#count-btn-container
-            input(type='submit', name='count', value='Count Logs')
+          input(type='submit', name='count', value='Count Logs')
+        p#queryResult
+        p#running
+          | #[i(class='fas fa-spinner fa-pulse')] Running query...
         p
           span.warning #{count_logs_warning}
         p#debug-info
 
-        script(src='https://code.jquery.com/jquery-3.3.1.min.js', integrity='sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=', crossorigin='anonymous')
+        script(src='https://code.jquery.com/jquery-3.3.1.min.js', integrity='sha384-tsQFqpEReu7ZLhBV2VZlAu7zcOV+rXbYlF2cqB8txI/8aZajjp4Bqd+V6D5IgvKT', crossorigin='anonymous')
         script
           include button-handlers.js
+          include signature-generator.js
