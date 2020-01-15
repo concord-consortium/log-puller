@@ -2,7 +2,6 @@
   var form = $('form');
   var queryResult = $('#queryResult');
   var running = $('#running');
-  var result = $('<b>');
   var buttons = $(".buttons > input");
   var countBtn = $('input[name="count"]');
   var debugBtn = $('input[name="debug"]');
@@ -22,13 +21,13 @@
   countBtn.on('click', function (e) {
     e.preventDefault(); // do not submit form
     querying(true)
+    queryResult.html("");
     $.ajax({
       method: 'POST',
       data: form.serialize() + "&count=true",
       success: function (resp) {
         console.log(resp);
-        result.text('Query will return ' + resp.result + ' logs.')
-        countButtonContainer.append(result);
+        queryResult.html($('<b>').text('Query will return ' + resp.result + ' logs.'));
       },
       error: function (jqXHR, textStatus, errorThrown) {
         const error = (jqXHR.responseJSON && jqXHR.responseJSON.error) || '';
