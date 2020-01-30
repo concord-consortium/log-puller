@@ -88,6 +88,7 @@ app.use((req, res, next) => {
 
   res.error = (message, code) => {
     code = code || 500;
+    console.error(`ERROR ${code}: ${message}`);
     res.status(code);
     res.json({success: false, error: message});
   };
@@ -205,6 +206,7 @@ const query = (req, res, download) => {
       columns = columns.filter((column) => exclude.indexOf(column) === -1).join(", ");
 
       const sql = "SELECT " + columns + " FROM logs WHERE activity = $1 AND (" + markers + ")";
+      console.log(`getOfferingInfo: ${sql}`)
       client
         .query(sql, paramValues)
         .on('error', (err) => {
@@ -349,6 +351,7 @@ const outputPortalReport = (req, res) => {
                     `SELECT DISTINCT (each(parameters)).key FROM logs WHERE id IN (SELECT id FROM base_ids) ` +
                     `UNION ` +
                     `SELECT DISTINCT (each(extras)).key FROM logs WHERE id IN (SELECT id FROM base_ids)`;
+      console.log(`outputPortalReport(explode): ${query}`)
 
       try {
         const result = await client.query(query, queryValues);
@@ -372,21 +375,33 @@ const outputPortalReport = (req, res) => {
         columns.splice(columns.indexOf('parameters'), 1);
         columns.splice(columns.indexOf('extras'), 1);
       }
-      res.write(columns.join(",") + '\n');
+      res.write(columns.join(","));
     }
     else {
-      res.write('[\n');
+      res.write('[');
     }
+
+    let sendSpaceWhileWaitingInterval = setInterval(() => {
+      res.write(" ");
+    }, 10 * 1000);
 
     const processQuery = (step) => {
       const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere}`; // NOTE: removed "ORDER BY time" to stop query from timing out
+      console.log(`outputPortalReport(processQuery): ${sql}`)
       client
         .query(sql, queryValues)
         .on('error', (err) => {
+          clearInterval(sendSpaceWhileWaitingInterval);
+          console.error(`ERROR outputPortalReport(processQuery): ${err.toString()}`)
           done();
           res.error(err.toString(), 500);
         })
         .on('row', row => {
+          if (sendSpaceWhileWaitingInterval) {
+            clearInterval(sendSpaceWhileWaitingInterval);
+            res.write('\n');
+            sendSpaceWhileWaitingInterval = 0;
+          }
           // Parse hstore columns and extend row object.
           objectColumns.forEach(column => {
             if (row.hasOwnProperty(column)) {
@@ -464,6 +479,7 @@ const outputLogsCount = (req, res) => {
   req.db(async (client, done) => {
     try {
       const sql = `SELECT COUNT(*) FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere}`;
+      console.log(`outputLogsCount: ${sql}`)
       const response = await client.query(sql, queryValues)
       res.success(response.rows[0].count);
     } catch (e) {
