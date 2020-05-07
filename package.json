@@ -1,6 +1,6 @@
 {
   "name": "log-manager-puller",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "description": "Pulls data from the log manager",
   "main": "index.js",
   "scripts": {
@@ -13,7 +13,7 @@
   "author": "Doug Martin",
   "license": "MIT",
   "dependencies": {
-    "@concord-consortium/hstore-to-json": "1.0.2",
+    "@concord-consortium/hstore-to-json": "1.0.3",
     "body-parser": "^1.18.3",
     "express": "^4.15.2",
     "foreman": "^3.0.1",
