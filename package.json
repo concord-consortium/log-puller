@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "jest": "^23.6.0",
-    "lodash": "^4.17.11",
+    "lodash": "^4.17.19",
     "nock": "^10.0.3",
     "supertest": "^3.3.0"
   }
