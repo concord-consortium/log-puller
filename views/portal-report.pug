@@ -121,6 +121,12 @@ html
           | No
           input(type='radio', name='filterTEEvents', value='yes')
           | Yes
+        p
+          label(for='explode') Exclude Learner events
+          input(type='radio', name='excludeLearnerEvents', value='no', checked=1)
+          | No
+          input(type='radio', name='excludeLearnerEvents', value='yes')
+          | Yes
         p.buttons
           input(type='submit', name='download', value='Download Logs')
           if allowDebug

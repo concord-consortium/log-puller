@@ -324,6 +324,11 @@ const getTEEventsFilter = (req) => {
   return filterTEEvents ? "AND (extras->'url' LIKE '%mode=teacher-edition%') AND (event LIKE 'TeacherEdition-%')" : "";
 }
 
+const getExcludeLearnersFilter = (req) => {
+  const excludeLearnerEvents = req.body.excludeLearnerEvents === "yes";
+  return excludeLearnerEvents ? "AND run_remote_endpoint IS NULL" : "";
+}
+
 const outputPortalReport = (req, res) => {
   const requestId = new Date().getTime();
 
@@ -335,6 +340,7 @@ const outputPortalReport = (req, res) => {
   const isCSV = req.body.format === "csv";
   const explode = req.body.explode === "yes";
   const filterTEEventsWhere = getTEEventsFilter(req);
+  const excludeLearnerEventsWhere = getExcludeLearnersFilter(req);
 
   res.type(isCSV ? 'csv' : 'json');
   res.setHeader('Content-disposition', 'attachment; filename="portal-report-' + Date.now() + (isCSV ? '.csv' : '.json"'));
@@ -386,7 +392,7 @@ const outputPortalReport = (req, res) => {
     }, 10 * 1000);
 
     const processQuery = (step) => {
-      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere}`; // NOTE: removed "ORDER BY time" to stop query from timing out
+      const sql = `SELECT ${baseColumns.join(', ')} FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere} ${excludeLearnerEventsWhere}`; // NOTE: removed "ORDER BY time" to stop query from timing out
       console.log(`outputPortalReport(processQuery): ${sql}`)
       client
         .query(sql, queryValues)
@@ -468,6 +474,7 @@ const outputPortalReport = (req, res) => {
 const outputLogsCount = (req, res) => {
   const requestId = new Date().getTime();
   const filterTEEventsWhere = getTEEventsFilter(req);
+  const excludeLearnerEventsWhere = getExcludeLearnersFilter(req);
 
   const { error, queryValues, queryMarkers } = getQuery(req);
   if (error) {
@@ -478,7 +485,7 @@ const outputLogsCount = (req, res) => {
 
   req.db(async (client, done) => {
     try {
-      const sql = `SELECT COUNT(*) FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere}`;
+      const sql = `SELECT COUNT(*) FROM logs WHERE ${queryMarkers} ${filterTEEventsWhere} ${excludeLearnerEventsWhere}`;
       console.log(`outputLogsCount: ${sql}`)
       const response = await client.query(sql, queryValues)
       res.success(response.rows[0].count);
