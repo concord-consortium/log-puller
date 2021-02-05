@@ -1,6 +1,6 @@
 {
   "name": "log-manager-puller",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Pulls data from the log manager",
   "main": "index.js",
   "scripts": {
