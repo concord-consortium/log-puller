@@ -23,18 +23,23 @@ module.exports = (params) => {
   if (runnables) {
     const activityMarkers = [];
     runnables.forEach((runnable) => {
-      if (runnable.source_type === "LARA") {
-        const activityMatch = runnable.url.match(/\/activities\/(\d+)$/);
-        const sequenceMatch = runnable.url.match(/\/sequences\/(\d+)$/);
-        if (activityMatch || sequenceMatch) {
-          if (activityMatch) {
-            queryValues.push(`activity: ${activityMatch[1]}`);
-          }
-          else {
-            queryValues.push(`sequence: ${sequenceMatch[1]}`);
-          }
-          activityMarkers.push(`activity = $${queryValues.length}`)
+      // AP activities seem to use encoded form while AP sequences don't. It might be a bug, but support both
+      // versions just in case. Example URLs:
+      // - LARA Activity: 'https://authoring.concord.org/activities/1'
+      // - AP Activity: 'https://activity-player.concord.org/branch/master/?activity=https%3A%2F%2Fapp.lara.docker%2Fapi%2Fv1%2Factivities%2F1.json'
+      // - AP Sequence: 'https://activity-player.concord.org/branch/master/?sequence=https://app.lara.docker/api/v1/sequences/1.json'
+      const activityMatch = runnable.url.match(/activities(%2F|\/)(\d+)/);
+      const sequenceMatch = runnable.url.match(/sequences(%2F|\/)(\d+)/);
+      const idGroupIdx = 2; // the first group is (%2F|\/)
+
+      if (activityMatch || sequenceMatch) {
+        if (activityMatch) {
+          queryValues.push(`activity: ${activityMatch[idGroupIdx]}`);
         }
+        else {
+          queryValues.push(`sequence: ${sequenceMatch[idGroupIdx]}`);
+        }
+        activityMarkers.push(`activity = $${queryValues.length}`)
       }
     });
     if (activityMarkers.length > 0) {
