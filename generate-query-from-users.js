@@ -1,3 +1,5 @@
+const { URL } = require("url");
+
 const convertTime = (fromCalendar) => {
   const [month, day, year, ...rest] = fromCalendar.split("/");
   return `${year}-${month}-${day}`;
@@ -32,6 +34,8 @@ module.exports = (params) => {
       const sequenceMatch = runnable.url.match(/sequences(%2F|\/)(\d+)/);
       const idGroupIdx = 2; // the first group is (%2F|\/)
 
+      // LARA and Portal Report log events with an `activity` property value equal to `activity: <id>` and `sequence: <id>`.
+      // For example: "activity: 20874"
       if (activityMatch || sequenceMatch) {
         if (activityMatch) {
           queryValues.push(`activity: ${activityMatch[idGroupIdx]}`);
@@ -39,6 +43,14 @@ module.exports = (params) => {
         else {
           queryValues.push(`sequence: ${sequenceMatch[idGroupIdx]}`);
         }
+        activityMarkers.push(`activity = $${queryValues.length}`)
+      }
+      // Activity Player logs events with an `activity` property value equal to activity or sequence JSON URL.
+      // For example: "https://authoring.staging.concord.org/api/v1/activities/20874.json"
+      const url = new URL(runnable.url);
+      const activityOrSequenceUrlParam = url.searchParams.get("sequence") || url.searchParams.get("activity");
+      if (activityOrSequenceUrlParam) {
+        queryValues.push(activityOrSequenceUrlParam);
         activityMarkers.push(`activity = $${queryValues.length}`)
       }
     });
