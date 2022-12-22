@@ -17,7 +17,7 @@
     "body-parser": "^1.18.3",
     "express": "^4.15.2",
     "foreman": "^3.0.1",
-    "jsonwebtoken": "^8.4.0",
+    "jsonwebtoken": "^9.0.0",
     "papaparse": "^4.6.2",
     "pg": "^6.1.5",
     "pug": "^2.0.3",
